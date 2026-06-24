@@ -55,8 +55,8 @@ constexpr uint16_t kPlaneIconZoom = 116;
 constexpr uint16_t kPlaneIconStrokeZoom = 122;
 constexpr uint16_t kExactPlaneIconZoom = 160;
 constexpr uint16_t kExactPlaneIconStrokeZoom = 168;
-constexpr uint16_t kNearestExactPlaneIconZoom = 220;
-constexpr uint16_t kNearestExactPlaneIconStrokeZoom = 231;
+constexpr uint16_t kNearestExactPlaneIconZoom = 196;
+constexpr uint16_t kNearestExactPlaneIconStrokeZoom = 206;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
@@ -555,13 +555,13 @@ void set_nearest_logo_visible(bool visible) {
         lv_obj_set_pos(g_nearestCallsign, 76, 0);
         lv_obj_set_width(g_nearestCallsign, 180);
         lv_obj_set_pos(g_nearestMeta, 76, 36);
-        lv_obj_set_width(g_nearestMeta, 284);
+        lv_obj_set_width(g_nearestMeta, 276);
     } else {
         lv_obj_add_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(g_nearestCallsign, 0, 0);
         lv_obj_set_width(g_nearestCallsign, 210);
         lv_obj_set_pos(g_nearestMeta, 0, 36);
-        lv_obj_set_width(g_nearestMeta, 336);
+        lv_obj_set_width(g_nearestMeta, 328);
     }
 }
 
@@ -913,10 +913,10 @@ void build_ui() {
     lv_obj_set_style_text_align(g_nearestType, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(g_nearestType, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestType, "--");
-    lv_obj_set_pos(g_nearestType, 365, 42);
+    lv_obj_set_pos(g_nearestType, 366, 36);
 
     g_nearestMeta = make_label(nearest, &lv_font_montserrat_14, cfg::kColorCyan);
-    lv_obj_set_width(g_nearestMeta, 336);
+    lv_obj_set_width(g_nearestMeta, 328);
     lv_label_set_long_mode(g_nearestMeta, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestMeta, "Waiting for ADS-B data");
     lv_obj_set_pos(g_nearestMeta, 0, 36);
@@ -1073,7 +1073,7 @@ void refresh_ui(lv_timer_t*) {
     lv_label_set_text(g_nearestType, type_for_aircraft(nearest).c_str());
     const lv_img_dsc_t* nearestDescriptor = icon_descriptor_for_aircraft(nearest);
     const int nearestHeading = nearest.hasTrack ? nearest.trackDeg : nearest.bearingDeg;
-    const lv_point_t nearestIconCenter = {394, 18};
+    const lv_point_t nearestIconCenter = {394, 15};
     const bool nearestExactIcon = has_exact_type_icon(nearest);
     position_plane_icon(g_nearestPlaneShadow, nearestIconCenter, nearestHeading,
                         nearestDescriptor,
