@@ -20,12 +20,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "extra/libs/png/lv_png.h"
 #include "lvgl.h"
 #include "nvs_flash.h"
 #include "rom/cache.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <stdio.h>
 #include <string>
@@ -48,8 +50,10 @@ constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
 constexpr double kCloseBasemapRangeMiles = 25.0;
+constexpr double kMidBasemapRangeMiles = 50.0;
 constexpr double kLongBasemapRangeMiles = 150.0;
 constexpr double kCloseBasemapMaxRangeMiles = 25.0;
+constexpr double kMidBasemapMaxRangeMiles = 50.0;
 constexpr size_t kHttpAircraftCapacity = 32;
 constexpr size_t kRouteBatchCapacity = 4;
 constexpr int kHttpTimeoutMs = 4000;
@@ -120,6 +124,8 @@ std::string g_missingLogoCode;
 int64_t g_logoLastSuccessMs = 0;
 int64_t g_logoRetryAfterMs = 0;
 bool g_pendingLogoReady = false;
+uint16_t g_logoImageWidth = 0;
+uint16_t g_logoImageHeight = 0;
 int64_t g_lastActivityMs = 0;
 bool g_displaySleeping = false;
 
@@ -354,11 +360,14 @@ void update_basemap_zoom(double rangeMiles) {
     }
 
     const bool useCloseBasemap = rangeMiles <= kCloseBasemapMaxRangeMiles;
-    const double sourceRangeMiles = useCloseBasemap ? kCloseBasemapRangeMiles : kLongBasemapRangeMiles;
+    const bool useMidBasemap = !useCloseBasemap && rangeMiles <= kMidBasemapMaxRangeMiles;
+    const double sourceRangeMiles = useCloseBasemap
+        ? kCloseBasemapRangeMiles
+        : (useMidBasemap ? kMidBasemapRangeMiles : kLongBasemapRangeMiles);
     if (sourceRangeMiles != g_basemapSourceRangeMiles) {
         lv_img_set_src(g_basemap, useCloseBasemap
             ? &flightsabove_basemap_close
-            : &flightsabove_basemap_long);
+            : (useMidBasemap ? &flightsabove_basemap_mid : &flightsabove_basemap_long));
         g_basemapSourceRangeMiles = sourceRangeMiles;
     }
 
@@ -388,6 +397,30 @@ void set_nearest_logo_visible(bool visible) {
     }
 }
 
+bool png_dimensions(const std::string& data, uint16_t& width, uint16_t& height) {
+    static constexpr uint8_t kPngMagic[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+    if (data.size() < 24 || memcmp(data.data(), kPngMagic, sizeof(kPngMagic)) != 0) {
+        return false;
+    }
+
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.data());
+    const uint32_t pngWidth = (static_cast<uint32_t>(bytes[16]) << 24) |
+                              (static_cast<uint32_t>(bytes[17]) << 16) |
+                              (static_cast<uint32_t>(bytes[18]) << 8) |
+                              static_cast<uint32_t>(bytes[19]);
+    const uint32_t pngHeight = (static_cast<uint32_t>(bytes[20]) << 24) |
+                               (static_cast<uint32_t>(bytes[21]) << 16) |
+                               (static_cast<uint32_t>(bytes[22]) << 8) |
+                               static_cast<uint32_t>(bytes[23]);
+    if (pngWidth == 0 || pngHeight == 0 || pngWidth > UINT16_MAX || pngHeight > UINT16_MAX) {
+        return false;
+    }
+
+    width = static_cast<uint16_t>(pngWidth);
+    height = static_cast<uint16_t>(pngHeight);
+    return true;
+}
+
 void apply_pending_logo() {
     if (g_logoMutex == nullptr || g_nearestLogo == nullptr) {
         return;
@@ -402,13 +435,19 @@ void apply_pending_logo() {
             g_pendingLogoPngData.clear();
             g_pendingLogoReady = false;
 
-            g_logoDescriptor.header.cf = 0;
+            uint16_t width = 0;
+            uint16_t height = 0;
+            const bool hasDimensions = png_dimensions(g_logoPngData, width, height);
+
+            g_logoDescriptor.header.cf = LV_IMG_CF_RAW_ALPHA;
             g_logoDescriptor.header.always_zero = 0;
             g_logoDescriptor.header.reserved = 0;
-            g_logoDescriptor.header.w = 0;
-            g_logoDescriptor.header.h = 0;
+            g_logoDescriptor.header.w = hasDimensions ? width : 0;
+            g_logoDescriptor.header.h = hasDimensions ? height : 0;
             g_logoDescriptor.data_size = static_cast<uint32_t>(g_logoPngData.size());
             g_logoDescriptor.data = reinterpret_cast<const uint8_t*>(g_logoPngData.data());
+            g_logoImageWidth = hasDimensions ? width : 0;
+            g_logoImageHeight = hasDimensions ? height : 0;
             changed = true;
         }
         xSemaphoreGive(g_logoMutex);
@@ -416,7 +455,14 @@ void apply_pending_logo() {
 
     if (changed && g_logoDescriptor.data_size > 0) {
         lv_img_set_src(g_nearestLogo, &g_logoDescriptor);
-        lv_img_set_zoom(g_nearestLogo, 128);
+        uint16_t zoom = 256;
+        if (g_logoImageWidth > 0 && g_logoImageHeight > 0) {
+            const double fitX = 58.0 / static_cast<double>(g_logoImageWidth);
+            const double fitY = 36.0 / static_cast<double>(g_logoImageHeight);
+            zoom = static_cast<uint16_t>(
+                std::max(64.0, std::min(256.0, std::floor(256.0 * std::min(fitX, fitY)))));
+        }
+        lv_img_set_zoom(g_nearestLogo, zoom);
         lv_obj_center(g_nearestLogo);
     }
 }
@@ -832,6 +878,7 @@ void init_lvgl() {
 
     platform::setBacklight(false);
     lv_init();
+    lv_png_init();
 
     void* fb1Raw = nullptr;
     void* fb2Raw = nullptr;
@@ -1154,7 +1201,7 @@ bool logo_cache_should_skip(const ImageFetchTarget& target, int64_t now, bool* m
 }
 
 void airline_logo_task(void*) {
-    int64_t lastLookupMs = 0;
+    int64_t lastLookupMs = -kLogoLookupMinIntervalMs;
     int64_t quotaWindowStartMs = now_ms();
     uint16_t lookupsThisWindow = 0;
 
@@ -1344,6 +1391,12 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     std::string pendingKey;
     std::string missingKey;
     size_t cachedBytes = 0;
+    uint16_t cachedWidth = 0;
+    uint16_t cachedHeight = 0;
+    lv_coord_t objectWidth = 0;
+    lv_coord_t objectHeight = 0;
+    uint16_t objectZoom = 0;
+    bool objectHidden = true;
     bool pending = false;
     int64_t retryAfterMs = 0;
     int64_t lastSuccessAgeMs = -1;
@@ -1352,12 +1405,20 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
         pendingKey = g_pendingLogoCode;
         missingKey = g_missingLogoCode;
         cachedBytes = g_logoDescriptor.data_size;
+        cachedWidth = g_logoImageWidth;
+        cachedHeight = g_logoImageHeight;
         pending = g_pendingLogoReady;
         retryAfterMs = g_logoRetryAfterMs;
         if (g_logoLastSuccessMs > 0) {
             lastSuccessAgeMs = now - g_logoLastSuccessMs;
         }
         xSemaphoreGive(g_logoMutex);
+    }
+    if (g_nearestLogo != nullptr && g_nearestLogoFrame != nullptr) {
+        objectWidth = lv_obj_get_width(g_nearestLogo);
+        objectHeight = lv_obj_get_height(g_nearestLogo);
+        objectZoom = lv_img_get_zoom(g_nearestLogo);
+        objectHidden = lv_obj_has_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
     }
 
     std::string body = "{";
@@ -1370,6 +1431,12 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     body += "\"fallback_key\":\"" + json_escape_text(fallback.key) + "\",";
     body += "\"cached_key\":\"" + json_escape_text(cachedKey) + "\",";
     body += "\"cached_bytes\":" + std::to_string(cachedBytes) + ",";
+    body += "\"cached_width\":" + std::to_string(cachedWidth) + ",";
+    body += "\"cached_height\":" + std::to_string(cachedHeight) + ",";
+    body += "\"object_width\":" + std::to_string(objectWidth) + ",";
+    body += "\"object_height\":" + std::to_string(objectHeight) + ",";
+    body += "\"object_zoom\":" + std::to_string(objectZoom) + ",";
+    body += "\"object_hidden\":" + std::string(objectHidden ? "true" : "false") + ",";
     body += "\"pending\":" + std::string(pending ? "true" : "false") + ",";
     body += "\"pending_key\":\"" + json_escape_text(pendingKey) + "\",";
     body += "\"missing_key\":\"" + json_escape_text(missingKey) + "\",";

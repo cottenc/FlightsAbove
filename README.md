@@ -105,10 +105,10 @@ https://github.com/wiedehopf/tar1090
 
 ## Static Basemap
 
-The radar basemap is generated as two flash-resident LVGL RGB565 images in
-`main/basemap_default.cpp`: a 25-mile close-range map and a 150-mile long-range
-map. Runtime autoscale uses the close map at 25 miles or below to avoid heavily
-zooming the long-range image. Both maps are aligned to the default map center
+The radar basemap is generated as three flash-resident LVGL RGB565 images in
+`main/basemap_default.cpp`: 25-mile close-range, 50-mile mid-range, and 150-mile
+long-range maps. Runtime autoscale uses the closest matching source to avoid
+heavily zooming a wider map. All maps are aligned to the default map center
 `47.68571, -122.31595`. Regenerate them after changing those defaults:
 
 ```sh
@@ -118,9 +118,9 @@ python -m pip install Pillow
 python tools/generate_basemap.py
 ```
 
-The generator writes visual check images to `docs/basemap_default_preview.png`
-and `docs/basemap_close_preview.png`. Map tiles are from OpenStreetMap
-contributors.
+The generator writes visual check images to `docs/basemap_close_preview.png`,
+`docs/basemap_mid_preview.png`, and `docs/basemap_default_preview.png`. Map
+tiles are from OpenStreetMap contributors.
 
 ## Project Layout
 
