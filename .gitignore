@@ -1,6 +1,11 @@
 .DS_Store
 .vscode/
+.env
+.env.*
 .tile-cache/
+*.key
+*.pem
+secrets/
 build/
 managed_components/
 sdkconfig

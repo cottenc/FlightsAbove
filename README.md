@@ -56,6 +56,7 @@ The portal provides:
 
 - Wi-Fi credential setup
 - receiver latitude/longitude
+- Logostream API key entry for airline logos
 - display sleep preference
 - status JSON
 - restart and factory reset actions
@@ -64,6 +65,15 @@ The portal provides:
 For OTA updates, build the project and upload `build/flightsabove.bin` from the
 portal. The device writes the app to the inactive OTA partition and reboots
 after a successful upload.
+
+## Airline Logos
+
+FlightsAbove can show a Logostream airline logo for the nearest aircraft when a
+callsign starts with a three-letter airline ICAO code, such as `ASA328`. Enter
+the Logostream API key in the setup portal. The key is stored only in the
+device's NVS settings, is never written to source files, is not returned by the
+status JSON, and is not logged. Common local secret file patterns are ignored in
+`.gitignore`.
 
 ## Supported Input
 

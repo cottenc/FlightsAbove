@@ -35,6 +35,10 @@ int main() {
     assert(updates[0].hasType && updates[0].typeCode == "B39M");
     assert(updates[0].typeDescription == "BOEING 737 MAX 9");
     assert(updates[0].category == "A3");
+    assert(adsb::airlineIcaoFromCallsign(updates[0].normalizedCallsign) == "ASA");
+    assert(adsb::airlineIcaoFromCallsign(" UAL0007 ") == "UAL");
+    assert(adsb::airlineIcaoFromCallsign("N12345").empty());
+    assert(adsb::airlineIcaoFromCallsign("AS328").empty());
 
     adsb::AircraftStore store(47.68571, -122.31595, 120000);
     updates[0].distanceNm = 598.0;

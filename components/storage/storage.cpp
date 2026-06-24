@@ -68,6 +68,7 @@ void Settings::load() {
         wifiSsid = get_string(nvs, "wifi_ssid", "");
         wifiPass = get_string(nvs, "wifi_pass", "");
         feederUrl = get_string(nvs, "feeder_url", cfg::kDefaultFeederUrl);
+        logostreamApiKey = get_string(nvs, "logo_key", "");
         receiverLatitude = get_double(nvs, "rx_lat", cfg::kDefaultReceiverLatitude);
         receiverLongitude = get_double(nvs, "rx_lon", cfg::kDefaultReceiverLongitude);
         if (std::abs(receiverLatitude - kLegacyDefaultLatitude) < 0.000001 &&
@@ -86,6 +87,7 @@ void Settings::load() {
         wifiSsid = "";
         wifiPass = "";
         feederUrl = cfg::kDefaultFeederUrl;
+        logostreamApiKey = "";
         receiverLatitude = cfg::kDefaultReceiverLatitude;
         receiverLongitude = cfg::kDefaultReceiverLongitude;
         displaySleepMin = 0;
@@ -101,6 +103,7 @@ void Settings::save() {
         nvs_set_str(nvs, "wifi_ssid", wifiSsid.c_str());
         nvs_set_str(nvs, "wifi_pass", wifiPass.c_str());
         nvs_set_str(nvs, "feeder_url", feederUrl.c_str());
+        nvs_set_str(nvs, "logo_key", logostreamApiKey.c_str());
         set_double(nvs, "rx_lat", receiverLatitude);
         set_double(nvs, "rx_lon", receiverLongitude);
         nvs_set_u16(nvs, "sleep_min", displaySleepMin);
@@ -136,6 +139,27 @@ std::string Settings::getFeederUrl() {
 void Settings::setFeederUrl(const std::string& url) {
     take();
     feederUrl = url.empty() ? cfg::kDefaultFeederUrl : url;
+    give();
+    save();
+}
+
+bool Settings::hasLogostreamApiKey() {
+    take();
+    bool configured = !logostreamApiKey.empty();
+    give();
+    return configured;
+}
+
+std::string Settings::getLogostreamApiKey() {
+    take();
+    std::string value = logostreamApiKey;
+    give();
+    return value;
+}
+
+void Settings::setLogostreamApiKey(const std::string& apiKey) {
+    take();
+    logostreamApiKey = apiKey;
     give();
     save();
 }
@@ -203,6 +227,7 @@ void Settings::factoryReset() {
     wifiSsid = "";
     wifiPass = "";
     feederUrl = cfg::kDefaultFeederUrl;
+    logostreamApiKey = "";
     receiverLatitude = cfg::kDefaultReceiverLatitude;
     receiverLongitude = cfg::kDefaultReceiverLongitude;
     displaySleepMin = 0;

@@ -10,10 +10,12 @@ idf_component_register(
         device_network
         esp_driver_uart
         esp_http_client
+        esp-tls
         esp_timer
         freertos
         log
         lvgl__lvgl
+        mbedtls
         nvs_flash
         platform
         storage

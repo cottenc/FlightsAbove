@@ -49,4 +49,22 @@ std::string normalizeCallsign(const std::string& callsign) {
            normalized.substr(digitEnd);
 }
 
+std::string airlineIcaoFromCallsign(const std::string& callsign) {
+    std::string normalized = trimCopy(callsign);
+    uppercaseInPlace(normalized);
+
+    if (normalized.size() < 4) {
+        return "";
+    }
+    for (size_t i = 0; i < 3; ++i) {
+        if (normalized[i] < 'A' || normalized[i] > 'Z') {
+            return "";
+        }
+    }
+    if (normalized[3] < '0' || normalized[3] > '9') {
+        return "";
+    }
+    return normalized.substr(0, 3);
+}
+
 }  // namespace adsb

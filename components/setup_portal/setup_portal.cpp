@@ -49,6 +49,9 @@ std::string renderPage(const std::string& basePath) {
     const std::string radarRange = std::to_string(settings.getRadarRangeMiles());
     const std::string feederUrl = htmlEscape(settings.getFeederUrl());
     const std::string passPlaceholder = pass.empty() ? "Required" : "Leave blank to keep current password";
+    const std::string logostreamPlaceholder = settings.hasLogostreamApiKey()
+        ? "Configured - leave blank to keep current key"
+        : "Paste Logostream API key";
 
     return std::string(
         "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -65,6 +68,7 @@ std::string renderPage(const std::string& basePath) {
         "color:var(--text);border:1px solid var(--line)}.danger{background:#4a1719;color:#ffdada;border:1px solid #773033}"
         ".grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.status{white-space:pre-wrap;color:var(--cyan);"
         "background:#07120f;border-radius:8px;padding:12px;min-height:96px}.hint{color:var(--muted);font-size:13px}"
+        ".inline{display:flex;align-items:center;gap:10px}.inline input{width:auto;margin-top:12px}"
         "@media(max-width:640px){.grid{grid-template-columns:1fr}}</style></head><body>"
         "<h1>FlightsAbove Setup</h1><div class=sub>Configure Wi-Fi, map center, radar range, and firmware updates.</div>"
         "<section><h2>Status</h2><pre id=status class=status>Loading...</pre>"
@@ -83,6 +87,10 @@ std::string renderPage(const std::string& basePath) {
         "<section><h2>Feeder</h2><form method=post action='" + basePath + "/save-feeder'>"
         "<label>Aircraft JSON URL</label><input name=url type=url inputmode=url required value='" + feederUrl + "'>"
         "<button>Save feeder</button></form><p class=hint>Use the local readsb/tar1090 aircraft JSON endpoint.</p></section>"
+        "<section><h2>Airline Logos</h2><form method=post action='" + basePath + "/save-logostream'>"
+        "<label>Logostream API key</label><input name=key type=password autocomplete=off placeholder='" + logostreamPlaceholder + "'>"
+        "<label class=inline><input name=clear type=checkbox value=1>Clear stored key</label>"
+        "<button>Save logo API key</button></form><p class=hint>The key is stored only on this device in NVS and is never shown in status output.</p></section>"
         "<section><h2>OTA Firmware Update</h2><input id=fw type=file accept='.bin,application/octet-stream' required>"
         "<button onclick=uploadFirmware()>Upload firmware</button><pre id=ota class=status></pre>"
         "<p class=hint>Upload the app binary from <code>build/flightsabove.bin</code>. "

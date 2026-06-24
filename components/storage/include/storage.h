@@ -7,6 +7,7 @@ struct Settings {
     std::string wifiSsid;
     std::string wifiPass;
     std::string feederUrl;
+    std::string logostreamApiKey;
     double receiverLatitude = 0.0;
     double receiverLongitude = 0.0;
     uint16_t displaySleepMin = 0;
@@ -20,6 +21,10 @@ struct Settings {
 
     std::string getFeederUrl();
     void setFeederUrl(const std::string& url);
+
+    bool hasLogostreamApiKey();
+    std::string getLogostreamApiKey();
+    void setLogostreamApiKey(const std::string& apiKey);
 
     void setReceiverLocation(double latitude, double longitude);
     double getReceiverLatitude();

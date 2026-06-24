@@ -10,6 +10,7 @@
 #include "ui_layout.h"
 
 #include "driver/uart.h"
+#include "esp_crt_bundle.h"
 #include "esp_err.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -48,10 +49,15 @@ constexpr size_t kRouteBatchCapacity = 4;
 constexpr int kHttpTimeoutMs = 4000;
 constexpr size_t kAircraftJsonMaxBytes = 32768;
 constexpr size_t kRouteJsonMaxBytes = 4096;
+constexpr size_t kLogoPngMaxBytes = 65536;
 constexpr int64_t kRouteLookupMinIntervalMs = 3500;
+constexpr int64_t kLogoLookupMinIntervalMs = 10000;
+constexpr int64_t kLogoMissingRetryMs = 15 * 60 * 1000;
+constexpr int64_t kLogoSuccessRefreshMs = 6 * 60 * 60 * 1000;
 constexpr double kMilesPerNm = 1.150779448;
 constexpr double kNmPerMile = 0.868976242;
 constexpr const char* kRouteApiUrl = "http://adsb.im/api/0/routeset";
+constexpr const char* kLogoApiBaseUrl = "https://airlines-api.logostream.dev/airlines/icao/";
 const char* TAG = "flightsabove";
 
 AircraftStore g_aircraftStore(cfg::kReceiverLatitude, cfg::kReceiverLongitude, cfg::kAircraftStaleMs);
@@ -60,12 +66,15 @@ ReadsbJsonParser g_readsbParser;
 RouteCache g_routeCache;
 SemaphoreHandle_t g_aircraftMutex = nullptr;
 SemaphoreHandle_t g_routeCacheMutex = nullptr;
+SemaphoreHandle_t g_logoMutex = nullptr;
 
 lv_obj_t* g_countLabel = nullptr;
 lv_obj_t* g_statusLabel = nullptr;
 lv_obj_t* g_nearestCallsign = nullptr;
 lv_obj_t* g_nearestMeta = nullptr;
 lv_obj_t* g_nearestType = nullptr;
+lv_obj_t* g_nearestLogoFrame = nullptr;
+lv_obj_t* g_nearestLogo = nullptr;
 lv_obj_t* g_rangeLabel = nullptr;
 lv_obj_t* g_outerRangeLabel = nullptr;
 lv_obj_t* g_radar = nullptr;
@@ -79,6 +88,15 @@ Aircraft g_routeVisibleAircraft[kVisibleAircraft] = {};
 AircraftUpdate g_httpUpdates[kHttpAircraftCapacity] = {};
 RouteRequest g_routeRequests[kRouteBatchCapacity] = {};
 RouteResult g_routeResults[kRouteBatchCapacity] = {};
+lv_img_dsc_t g_logoDescriptor = {};
+std::string g_logoPngData;
+std::string g_logoCode;
+std::string g_pendingLogoPngData;
+std::string g_pendingLogoCode;
+std::string g_missingLogoCode;
+int64_t g_logoLastSuccessMs = 0;
+int64_t g_logoRetryAfterMs = 0;
+bool g_pendingLogoReady = false;
 int64_t g_lastActivityMs = 0;
 bool g_displaySleeping = false;
 
@@ -107,7 +125,8 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
 }
 
 esp_err_t http_request(const char* url, const char* postBody, const char* contentType,
-                       size_t maxBytes, std::string& responseBody, int* statusCode = nullptr) {
+                       size_t maxBytes, std::string& responseBody, int* statusCode = nullptr,
+                       const char* headerName = nullptr, const char* headerValue = nullptr) {
     HttpResponse response;
     response.maxBytes = maxBytes;
     response.body.reserve(std::min<size_t>(maxBytes, 4096));
@@ -119,6 +138,9 @@ esp_err_t http_request(const char* url, const char* postBody, const char* conten
     config.event_handler = http_event_handler;
     config.user_data = &response;
     config.max_redirection_count = 2;
+    if (strncmp(url, "https://", 8) == 0) {
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+    }
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr) {
@@ -129,6 +151,9 @@ esp_err_t http_request(const char* url, const char* postBody, const char* conten
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_http_client_set_method(client, HTTP_METHOD_POST));
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_http_client_set_header(client, "Content-Type", contentType));
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_http_client_set_post_field(client, postBody, strlen(postBody)));
+    }
+    if (headerName != nullptr && headerValue != nullptr && headerValue[0] != '\0') {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_http_client_set_header(client, headerName, headerValue));
     }
 
     const esp_err_t err = esp_http_client_perform(client);
@@ -150,6 +175,13 @@ esp_err_t http_get(const char* url, size_t maxBytes, std::string& responseBody, 
 esp_err_t http_post_json(const char* url, const std::string& body, size_t maxBytes,
                          std::string& responseBody, int* statusCode = nullptr) {
     return http_request(url, body.c_str(), "application/json", maxBytes, responseBody, statusCode);
+}
+
+esp_err_t http_get_with_header(const char* url, const char* headerName, const char* headerValue,
+                               size_t maxBytes, std::string& responseBody,
+                               int* statusCode = nullptr) {
+    return http_request(url, nullptr, nullptr, maxBytes, responseBody, statusCode,
+                        headerName, headerValue);
 }
 
 void mark_activity() {
@@ -310,6 +342,59 @@ void update_basemap_zoom(double rangeMiles) {
     const uint16_t lvZoom = static_cast<uint16_t>(
         std::max(128.0, std::min(4096.0, std::round(zoom))));
     lv_img_set_zoom(g_basemap, lvZoom);
+}
+
+void set_nearest_logo_visible(bool visible) {
+    if (g_nearestLogoFrame == nullptr) {
+        return;
+    }
+
+    if (visible) {
+        lv_obj_clear_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(g_nearestCallsign, 76, 0);
+        lv_obj_set_width(g_nearestCallsign, 180);
+        lv_obj_set_pos(g_nearestMeta, 76, 36);
+        lv_obj_set_width(g_nearestMeta, 344);
+    } else {
+        lv_obj_add_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(g_nearestCallsign, 0, 0);
+        lv_obj_set_width(g_nearestCallsign, 210);
+        lv_obj_set_pos(g_nearestMeta, 0, 36);
+        lv_obj_set_width(g_nearestMeta, 410);
+    }
+}
+
+void apply_pending_logo() {
+    if (g_logoMutex == nullptr || g_nearestLogo == nullptr) {
+        return;
+    }
+
+    bool changed = false;
+    if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        if (g_pendingLogoReady) {
+            g_logoPngData.swap(g_pendingLogoPngData);
+            g_logoCode = g_pendingLogoCode;
+            g_pendingLogoCode.clear();
+            g_pendingLogoPngData.clear();
+            g_pendingLogoReady = false;
+
+            g_logoDescriptor.header.cf = 0;
+            g_logoDescriptor.header.always_zero = 0;
+            g_logoDescriptor.header.reserved = 0;
+            g_logoDescriptor.header.w = 0;
+            g_logoDescriptor.header.h = 0;
+            g_logoDescriptor.data_size = static_cast<uint32_t>(g_logoPngData.size());
+            g_logoDescriptor.data = reinterpret_cast<const uint8_t*>(g_logoPngData.data());
+            changed = true;
+        }
+        xSemaphoreGive(g_logoMutex);
+    }
+
+    if (changed && g_logoDescriptor.data_size > 0) {
+        lv_img_set_src(g_nearestLogo, &g_logoDescriptor);
+        lv_img_set_zoom(g_nearestLogo, 128);
+        lv_obj_center(g_nearestLogo);
+    }
 }
 
 lv_point_t radar_point(double distanceNm, int bearingDeg, double rangeNm) {
@@ -531,11 +616,25 @@ void build_ui() {
     lv_obj_set_style_pad_all(nearest, 10, 0);
     lv_obj_clear_flag(nearest, LV_OBJ_FLAG_SCROLLABLE);
 
+    g_nearestLogoFrame = lv_obj_create(nearest);
+    lv_obj_set_size(g_nearestLogoFrame, 64, 42);
+    lv_obj_set_pos(g_nearestLogoFrame, 0, 1);
+    lv_obj_set_style_radius(g_nearestLogoFrame, 6, 0);
+    lv_obj_set_style_pad_all(g_nearestLogoFrame, 3, 0);
+    lv_obj_set_style_bg_color(g_nearestLogoFrame, lv_color_hex(0xF4F7F2), 0);
+    lv_obj_set_style_border_width(g_nearestLogoFrame, 0, 0);
+    lv_obj_set_style_clip_corner(g_nearestLogoFrame, true, 0);
+    lv_obj_clear_flag(g_nearestLogoFrame, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
+
+    g_nearestLogo = lv_img_create(g_nearestLogoFrame);
+    lv_obj_center(g_nearestLogo);
+
     g_nearestCallsign = make_label(nearest, &lv_font_montserrat_20, cfg::kColorText);
     lv_obj_set_width(g_nearestCallsign, 210);
     lv_label_set_long_mode(g_nearestCallsign, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestCallsign, "--");
-    lv_obj_align(g_nearestCallsign, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_pos(g_nearestCallsign, 0, 0);
 
     g_nearestType = make_label(nearest, &lv_font_montserrat_14, cfg::kColorAmber);
     lv_obj_set_width(g_nearestType, 190);
@@ -547,7 +646,7 @@ void build_ui() {
     lv_obj_set_width(g_nearestMeta, 410);
     lv_label_set_long_mode(g_nearestMeta, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestMeta, "Waiting for ADS-B data");
-    lv_obj_align(g_nearestMeta, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_pos(g_nearestMeta, 0, 36);
 
     g_statusLabel = make_label(scr, &lv_font_montserrat_14, cfg::kColorMuted);
     lv_label_set_text(g_statusLabel, "HTTP ADS-B | UART fallback");
@@ -562,6 +661,8 @@ std::string label_for_aircraft(const Aircraft& aircraft) {
 }
 
 void refresh_ui(lv_timer_t*) {
+    apply_pending_logo();
+
     size_t count = 0;
     size_t activeCount = 0;
     const int64_t now = now_ms();
@@ -593,6 +694,7 @@ void refresh_ui(lv_timer_t*) {
     }
 
     if (count == 0) {
+        set_nearest_logo_visible(false);
         lv_label_set_text(g_nearestCallsign, "--");
         lv_label_set_text(g_nearestType, "--");
         lv_label_set_text(g_nearestMeta, "Waiting for ADS-B data");
@@ -654,6 +756,14 @@ void refresh_ui(lv_timer_t*) {
     }
 
     const Aircraft& nearest = g_visibleAircraft[0];
+    const std::string nearestLogoCode = adsb::airlineIcaoFromCallsign(nearest.normalizedCallsign.empty()
+        ? nearest.callsign
+        : nearest.normalizedCallsign);
+    const bool showLogo = settings.hasLogostreamApiKey() &&
+                          !nearestLogoCode.empty() &&
+                          nearestLogoCode == g_logoCode &&
+                          g_logoDescriptor.data_size > 0;
+    set_nearest_logo_visible(showLogo);
     lv_label_set_text(g_nearestCallsign, label_for_aircraft(nearest).c_str());
     lv_label_set_text(g_nearestType, type_for_aircraft(nearest).c_str());
     const std::string metaPrefix = nearest.hasRoute && !nearest.route.empty()
@@ -923,6 +1033,107 @@ void route_lookup_task(void*) {
     }
 }
 
+bool looks_like_png(const std::string& data) {
+    static constexpr uint8_t kPngMagic[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+    return data.size() >= sizeof(kPngMagic) &&
+           memcmp(data.data(), kPngMagic, sizeof(kPngMagic)) == 0;
+}
+
+std::string logo_url_for_airline_icao(const std::string& code) {
+    return std::string(kLogoApiBaseUrl) + code +
+           "?variant=logo-bg-white&format=png&size=84";
+}
+
+void airline_logo_task(void*) {
+    int64_t lastLookupMs = 0;
+
+    for (;;) {
+        const device_network::Snapshot network = device_network::snapshot();
+        if (!network.stationConnected) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        const std::string apiKey = settings.getLogostreamApiKey();
+        if (apiKey.empty()) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
+        }
+
+        Aircraft nearest;
+        bool hasNearest = false;
+        const int64_t now = now_ms();
+        if (xSemaphoreTake(g_aircraftMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            g_aircraftStore.purgeStale(now);
+            hasNearest = g_aircraftStore.snapshot(&nearest, 1, now) == 1;
+            xSemaphoreGive(g_aircraftMutex);
+        }
+        if (!hasNearest) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        const std::string code = adsb::airlineIcaoFromCallsign(nearest.normalizedCallsign.empty()
+            ? nearest.callsign
+            : nearest.normalizedCallsign);
+        if (code.empty()) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        bool skip = false;
+        if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            const bool cached = code == g_logoCode &&
+                                now - g_logoLastSuccessMs < kLogoSuccessRefreshMs;
+            const bool pending = g_pendingLogoReady && code == g_pendingLogoCode;
+            const bool missing = code == g_missingLogoCode && now < g_logoRetryAfterMs;
+            skip = cached || pending || missing;
+            xSemaphoreGive(g_logoMutex);
+        }
+        if (skip) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        if (now - lastLookupMs < kLogoLookupMinIntervalMs) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        const std::string url = logo_url_for_airline_icao(code);
+        std::string body;
+        int status = 0;
+        lastLookupMs = now_ms();
+        const esp_err_t err = http_get_with_header(url.c_str(), "x-api-key", apiKey.c_str(),
+                                                   kLogoPngMaxBytes, body, &status);
+        const int64_t responseNow = now_ms();
+        if (err == ESP_OK && status == 200 && looks_like_png(body)) {
+            if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                g_pendingLogoCode = code;
+                g_pendingLogoPngData.swap(body);
+                g_pendingLogoReady = true;
+                g_logoLastSuccessMs = responseNow;
+                if (g_missingLogoCode == code) {
+                    g_missingLogoCode.clear();
+                    g_logoRetryAfterMs = 0;
+                }
+                xSemaphoreGive(g_logoMutex);
+            }
+            ESP_LOGI(TAG, "airline logo cached for %s", code.c_str());
+        } else {
+            if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                g_missingLogoCode = code;
+                g_logoRetryAfterMs = responseNow + kLogoMissingRetryMs;
+                xSemaphoreGive(g_logoMutex);
+            }
+            ESP_LOGW(TAG, "airline logo lookup failed for %s: %s status=%d",
+                     code.c_str(), esp_err_to_name(err), status);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+
 void init_adsb_uart() {
     uart_config_t uartConfig = {};
     uartConfig.baud_rate = cfg::kAdsbBaudRate;
@@ -954,12 +1165,15 @@ extern "C" void app_main() {
     configASSERT(g_aircraftMutex != nullptr);
     g_routeCacheMutex = xSemaphoreCreateMutex();
     configASSERT(g_routeCacheMutex != nullptr);
+    g_logoMutex = xSemaphoreCreateMutex();
+    configASSERT(g_logoMutex != nullptr);
 
     device_network::begin();
     init_adsb_uart();
     xTaskCreatePinnedToCore(adsb_task, "adsb_uart", 4096, nullptr, 5, nullptr, 0);
     xTaskCreatePinnedToCore(adsb_http_task, "adsb_http", 12288, nullptr, 4, nullptr, 0);
     xTaskCreatePinnedToCore(route_lookup_task, "route_lookup", 12288, nullptr, 3, nullptr, 0);
+    xTaskCreatePinnedToCore(airline_logo_task, "airline_logo", 12288, nullptr, 2, nullptr, 0);
 
     init_lvgl();
     for (;;) {

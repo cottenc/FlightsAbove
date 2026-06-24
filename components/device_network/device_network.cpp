@@ -290,6 +290,7 @@ esp_err_t handle_status(httpd_req_t* req) {
     json += "\"radar_range_miles\":" + std::to_string(settings.getRadarRangeMiles()) + ",";
     const std::string feederUrl = settings.getFeederUrl();
     json += "\"feeder_url\":\"" + json_escape(feederUrl.c_str()) + "\",";
+    json += "\"logostream_api_key_configured\":" + std::string(settings.hasLogostreamApiKey() ? "true" : "false") + ",";
     json += "\"free_heap\":" + std::to_string(heap_caps_get_free_size(MALLOC_CAP_DEFAULT)) + ",";
     json += "\"ota_running\":" + std::string(snap.otaRunning ? "true" : "false");
     json += "}";
@@ -352,6 +353,27 @@ esp_err_t handle_save_feeder(httpd_req_t* req) {
         return send_text(req, 400, "text/plain", "Feeder URL must start with http://.");
     }
     settings.setFeederUrl(url);
+    return redirect_root(req);
+}
+
+esp_err_t handle_save_logostream(httpd_req_t* req) {
+    const std::string body = read_body(req, 2048);
+    std::string key = form_value(body, "key");
+    const bool clear = form_value(body, "clear") == "1";
+    trim(key);
+
+    if (clear) {
+        settings.setLogostreamApiKey("");
+        return redirect_root(req);
+    }
+
+    if (!key.empty()) {
+        if (key.size() > 512) {
+            return send_text(req, 400, "text/plain", "Logostream API key is too long.");
+        }
+        settings.setLogostreamApiKey(key);
+    }
+
     return redirect_root(req);
 }
 
@@ -452,6 +474,7 @@ void start_server() {
     register_uri("/save-wifi", HTTP_POST, handle_save_wifi);
     register_uri("/save-receiver", HTTP_POST, handle_save_receiver);
     register_uri("/save-feeder", HTTP_POST, handle_save_feeder);
+    register_uri("/save-logostream", HTTP_POST, handle_save_logostream);
     register_uri("/ota", HTTP_POST, handle_ota);
     register_uri("/restart", HTTP_POST, handle_restart);
     register_uri("/factory-reset", HTTP_POST, handle_factory_reset);
