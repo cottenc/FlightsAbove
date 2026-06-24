@@ -19,6 +19,7 @@ idf_component_register(
         mbedtls
         nvs_flash
         platform
+        spiffs
         storage
         ui_layout
 )

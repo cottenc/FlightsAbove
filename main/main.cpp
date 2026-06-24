@@ -16,6 +16,7 @@
 #include "esp_http_client.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_spiffs.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -29,9 +30,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <dirent.h>
 #include <stdio.h>
 #include <string>
 #include <string.h>
+#include <sys/stat.h>
 
 using adsb::Aircraft;
 using adsb::AircraftStore;
@@ -68,11 +71,15 @@ constexpr int64_t kLogoMissingRetryMs = 24 * 60 * 60 * 1000;
 constexpr int64_t kLogoSuccessRefreshMs = 30LL * 24 * 60 * 60 * 1000;
 constexpr int64_t kLogoQuotaWindowMs = 24 * 60 * 60 * 1000;
 constexpr uint16_t kLogoDailyLookupLimit = 100;
+constexpr int64_t kLogoPrefetchIntervalMs = 10 * 1000;
+constexpr int64_t kLogoPrefetchIdleMs = 60 * 60 * 1000;
+constexpr size_t kLogoPersistentCacheMaxEntries = 32;
 constexpr double kMilesPerNm = 1.150779448;
 constexpr double kNmPerMile = 0.868976242;
 constexpr const char* kRouteApiUrl = "http://adsb.im/api/0/routeset";
 constexpr const char* kLogoApiBaseUrl = "https://airlines-api.logostream.dev/airlines/icao/";
 constexpr const char* kLiveryApiBaseUrl = "https://airlines-api.logostream.dev/livery/icao/";
+constexpr const char* kLogoCacheBasePath = "/spiffs/logos";
 const char* TAG = "flightsabove";
 
 AircraftStore g_aircraftStore(cfg::kReceiverLatitude, cfg::kReceiverLongitude, cfg::kAircraftStaleMs);
@@ -128,6 +135,8 @@ int64_t g_logoRetryAfterMs = 0;
 bool g_pendingLogoReady = false;
 uint16_t g_logoImageWidth = 0;
 uint16_t g_logoImageHeight = 0;
+bool g_logoCacheMounted = false;
+bool g_logoCacheMountAttempted = false;
 int64_t g_lastActivityMs = 0;
 bool g_displaySleeping = false;
 
@@ -1138,6 +1147,221 @@ bool looks_like_png(const std::string& data) {
            memcmp(data.data(), kPngMagic, sizeof(kPngMagic)) == 0;
 }
 
+const char* const kCommonAirlineIcao[] = {
+    "ASA", "DAL", "QXE", "SKW", "UAL", "SWA", "AAL", "JZA", "ACA", "WJA",
+    "ROU", "ATN", "UPS", "ICE", "FDX", "BAW", "ANA", "AAY", "FFT", "CFS",
+};
+
+bool ensure_logo_cache_mounted() {
+    if (g_logoCacheMounted) {
+        return true;
+    }
+    if (g_logoCacheMountAttempted) {
+        return false;
+    }
+    g_logoCacheMountAttempted = true;
+
+    esp_vfs_spiffs_conf_t conf = {};
+    conf.base_path = "/spiffs";
+    conf.partition_label = nullptr;
+    conf.max_files = 8;
+    conf.format_if_mount_failed = true;
+
+    const esp_err_t err = esp_vfs_spiffs_register(&conf);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "logo cache mount failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    size_t total = 0;
+    size_t used = 0;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_spiffs_info(nullptr, &total, &used));
+    ESP_LOGI(TAG, "logo cache mounted: %u/%u bytes used",
+             static_cast<unsigned>(used), static_cast<unsigned>(total));
+    mkdir(kLogoCacheBasePath, 0775);
+    g_logoCacheMounted = true;
+    return true;
+}
+
+std::string logo_cache_path_for_key(const std::string& key) {
+    std::string filename;
+    filename.reserve(key.size() + 4);
+    for (char ch : key) {
+        const bool safe = (ch >= 'A' && ch <= 'Z') ||
+                          (ch >= '0' && ch <= '9') ||
+                          ch == '_' || ch == '-';
+        filename.push_back(safe ? ch : '_');
+    }
+    filename += ".png";
+    return std::string(kLogoCacheBasePath) + "/" + filename;
+}
+
+bool logo_cache_file_exists(const std::string& key) {
+    if (key.empty() || !ensure_logo_cache_mounted()) {
+        return false;
+    }
+    struct stat st = {};
+    return stat(logo_cache_path_for_key(key).c_str(), &st) == 0 &&
+           st.st_size > 0 &&
+           st.st_size <= static_cast<off_t>(kLogoPngMaxBytes);
+}
+
+size_t logo_cache_entry_count() {
+    if (!ensure_logo_cache_mounted()) {
+        return 0;
+    }
+    DIR* dir = opendir(kLogoCacheBasePath);
+    if (dir == nullptr) {
+        return 0;
+    }
+    size_t count = 0;
+    while (dirent* entry = readdir(dir)) {
+        if (entry->d_name[0] != '.') {
+            ++count;
+        }
+    }
+    closedir(dir);
+    return count;
+}
+
+bool logo_cache_key_is_common_file(const char* filename) {
+    if (filename == nullptr) {
+        return false;
+    }
+    for (const char* code : kCommonAirlineIcao) {
+        std::string expected = "A_";
+        expected += code;
+        expected += ".png";
+        if (expected == filename) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void evict_logo_cache_entry_if_needed(const std::string& keepKey) {
+    if (logo_cache_entry_count() < kLogoPersistentCacheMaxEntries) {
+        return;
+    }
+
+    const std::string keepPath = logo_cache_path_for_key(keepKey);
+    DIR* dir = opendir(kLogoCacheBasePath);
+    if (dir == nullptr) {
+        return;
+    }
+
+    std::string candidate;
+    while (dirent* entry = readdir(dir)) {
+        if (entry->d_name[0] == '.' || logo_cache_key_is_common_file(entry->d_name)) {
+            continue;
+        }
+        std::string path = std::string(kLogoCacheBasePath) + "/" + entry->d_name;
+        if (path != keepPath) {
+            candidate = path;
+            break;
+        }
+    }
+    closedir(dir);
+
+    if (!candidate.empty()) {
+        remove(candidate.c_str());
+    }
+}
+
+bool read_logo_from_cache(const ImageFetchTarget& target, std::string& output) {
+    if (target.livery || target.key.empty() || !ensure_logo_cache_mounted()) {
+        return false;
+    }
+
+    const std::string path = logo_cache_path_for_key(target.key);
+    FILE* file = fopen(path.c_str(), "rb");
+    if (file == nullptr) {
+        return false;
+    }
+
+    fseek(file, 0, SEEK_END);
+    const long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (size <= 0 || size > static_cast<long>(kLogoPngMaxBytes)) {
+        fclose(file);
+        remove(path.c_str());
+        return false;
+    }
+
+    output.assign(static_cast<size_t>(size), '\0');
+    const size_t read = fread(output.data(), 1, output.size(), file);
+    fclose(file);
+    if (read != output.size() || !looks_like_png(output)) {
+        remove(path.c_str());
+        output.clear();
+        return false;
+    }
+    return true;
+}
+
+void write_logo_to_cache(const ImageFetchTarget& target, const std::string& pngData) {
+    if (target.livery || target.key.empty() || !looks_like_png(pngData) ||
+        !ensure_logo_cache_mounted()) {
+        return;
+    }
+
+    evict_logo_cache_entry_if_needed(target.key);
+    const std::string path = logo_cache_path_for_key(target.key);
+    FILE* file = fopen(path.c_str(), "wb");
+    if (file == nullptr) {
+        ESP_LOGW(TAG, "logo cache write failed for %s", target.key.c_str());
+        return;
+    }
+    const size_t written = fwrite(pngData.data(), 1, pngData.size(), file);
+    fclose(file);
+    if (written != pngData.size()) {
+        remove(path.c_str());
+        ESP_LOGW(TAG, "logo cache short write for %s", target.key.c_str());
+        return;
+    }
+    ESP_LOGI(TAG, "logo stored in persistent cache for %s", target.key.c_str());
+}
+
+bool queue_logo_for_display(const ImageFetchTarget& target, std::string& pngData, int64_t now) {
+    if (target.key.empty() || !looks_like_png(pngData)) {
+        return false;
+    }
+    if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        g_pendingLogoCode = target.key;
+        g_pendingLogoPngData.swap(pngData);
+        g_pendingLogoReady = true;
+        g_logoLastSuccessMs = now;
+        if (g_missingLogoCode == target.key) {
+            g_missingLogoCode.clear();
+            g_logoRetryAfterMs = 0;
+        }
+        xSemaphoreGive(g_logoMutex);
+        return true;
+    }
+    return false;
+}
+
+bool load_logo_cache_for_display(const ImageFetchTarget& target, int64_t now) {
+    bool alreadyLoaded = false;
+    if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        alreadyLoaded = target.key == g_logoCode || target.key == g_pendingLogoCode;
+        xSemaphoreGive(g_logoMutex);
+    }
+    if (alreadyLoaded) {
+        return true;
+    }
+
+    std::string cachedPng;
+    if (!read_logo_from_cache(target, cachedPng)) {
+        return false;
+    }
+    const bool queued = queue_logo_for_display(target, cachedPng, now);
+    if (queued) {
+        ESP_LOGI(TAG, "logo loaded from persistent cache for %s", target.key.c_str());
+    }
+    return queued;
+}
+
 std::string url_query_escape(const std::string& value) {
     static constexpr char kHex[] = "0123456789ABCDEF";
     std::string output;
@@ -1196,6 +1420,18 @@ ImageFetchTarget image_target_for_aircraft(const Aircraft& aircraft, bool prefer
     return target;
 }
 
+ImageFetchTarget airline_logo_target_for_icao(const char* code) {
+    ImageFetchTarget target;
+    if (code == nullptr || strlen(code) != 3) {
+        return target;
+    }
+    target.airlineIcao = code;
+    target.key = "A:" + target.airlineIcao;
+    target.url = logo_url_for_airline_icao(target.airlineIcao);
+    target.livery = false;
+    return target;
+}
+
 bool logo_cache_should_skip(const ImageFetchTarget& target, int64_t now, bool* missingOut = nullptr) {
     const bool cached = target.key == g_logoCode &&
                         now - g_logoLastSuccessMs < kLogoSuccessRefreshMs;
@@ -1238,12 +1474,19 @@ void airline_logo_task(void*) {
             continue;
         }
 
-        ImageFetchTarget target = image_target_for_aircraft(nearest, true);
-        if (target.key.empty()) {
+        const ImageFetchTarget preferredTarget = image_target_for_aircraft(nearest, true);
+        const ImageFetchTarget fallbackTarget = image_target_for_aircraft(nearest, false);
+        if (preferredTarget.key.empty() && fallbackTarget.key.empty()) {
             vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
 
+        if (!fallbackTarget.key.empty() && load_logo_cache_for_display(fallbackTarget, now)) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        ImageFetchTarget target = preferredTarget.key.empty() ? fallbackTarget : preferredTarget;
         bool skip = false;
         bool missing = false;
         if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -1251,7 +1494,7 @@ void airline_logo_task(void*) {
             xSemaphoreGive(g_logoMutex);
         }
         if (skip && missing && target.livery) {
-            target = image_target_for_aircraft(nearest, false);
+            target = fallbackTarget;
             if (target.key.empty()) {
                 vTaskDelay(pdMS_TO_TICKS(2000));
                 continue;
@@ -1305,6 +1548,10 @@ void airline_logo_task(void*) {
                 fallbackSkip = logo_cache_should_skip(target, now_ms(), nullptr);
                 xSemaphoreGive(g_logoMutex);
             }
+            if (!fallbackSkip && load_logo_cache_for_display(target, now_ms())) {
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue;
+            }
             if (fallbackSkip) {
                 vTaskDelay(pdMS_TO_TICKS(2000));
                 continue;
@@ -1322,17 +1569,10 @@ void airline_logo_task(void*) {
         }
         const int64_t responseNow = now_ms();
         if (err == ESP_OK && status == 200 && looks_like_png(body)) {
-            if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                g_pendingLogoCode = target.key;
-                g_pendingLogoPngData.swap(body);
-                g_pendingLogoReady = true;
-                g_logoLastSuccessMs = responseNow;
-                if (g_missingLogoCode == target.key) {
-                    g_missingLogoCode.clear();
-                    g_logoRetryAfterMs = 0;
-                }
-                xSemaphoreGive(g_logoMutex);
+            if (!target.livery) {
+                write_logo_to_cache(target, body);
             }
+            queue_logo_for_display(target, body, responseNow);
             ESP_LOGI(TAG, "%s image cached for %s",
                      target.livery ? "livery" : "airline logo",
                      target.key.c_str());
@@ -1347,6 +1587,59 @@ void airline_logo_task(void*) {
         }
 
         vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+
+void logo_prefetch_task(void*) {
+    size_t nextIndex = 0;
+    int64_t quotaWindowStartMs = now_ms();
+    uint16_t lookupsThisWindow = 0;
+
+    for (;;) {
+        const device_network::Snapshot network = device_network::snapshot();
+        const std::string apiKey = settings.getLogostreamApiKey();
+        if (!network.stationConnected || apiKey.empty() || !ensure_logo_cache_mounted()) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
+        }
+
+        const int64_t now = now_ms();
+        if (now - quotaWindowStartMs >= kLogoQuotaWindowMs) {
+            quotaWindowStartMs = now;
+            lookupsThisWindow = 0;
+        }
+        if (lookupsThisWindow >= kLogoDailyLookupLimit) {
+            vTaskDelay(pdMS_TO_TICKS(kLogoPrefetchIdleMs));
+            continue;
+        }
+
+        bool fetched = false;
+        for (size_t attempt = 0; attempt < sizeof(kCommonAirlineIcao) / sizeof(kCommonAirlineIcao[0]); ++attempt) {
+            const char* code = kCommonAirlineIcao[nextIndex];
+            nextIndex = (nextIndex + 1) % (sizeof(kCommonAirlineIcao) / sizeof(kCommonAirlineIcao[0]));
+
+            ImageFetchTarget target = airline_logo_target_for_icao(code);
+            if (target.key.empty() || logo_cache_file_exists(target.key)) {
+                continue;
+            }
+
+            std::string body;
+            int status = 0;
+            ++lookupsThisWindow;
+            const esp_err_t err = http_get(image_url_with_key(target, apiKey).c_str(),
+                                           kLogoPngMaxBytes, body, &status);
+            if (err == ESP_OK && status == 200 && looks_like_png(body)) {
+                write_logo_to_cache(target, body);
+                ESP_LOGI(TAG, "prefetched common airline logo for %s", target.key.c_str());
+            } else {
+                ESP_LOGW(TAG, "common logo prefetch failed for %s: %s status=%d",
+                         target.key.c_str(), esp_err_to_name(err), status);
+            }
+            fetched = true;
+            break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(fetched ? kLogoPrefetchIntervalMs : kLogoPrefetchIdleMs));
     }
 }
 
@@ -1404,6 +1697,9 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     lv_coord_t objectHeight = 0;
     uint16_t objectZoom = 0;
     bool objectHidden = true;
+    const bool persistentPreferred = logo_cache_file_exists(preferred.key);
+    const bool persistentFallback = logo_cache_file_exists(fallback.key);
+    const size_t persistentCount = logo_cache_entry_count();
     bool pending = false;
     int64_t retryAfterMs = 0;
     int64_t lastSuccessAgeMs = -1;
@@ -1444,6 +1740,10 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     body += "\"object_height\":" + std::to_string(objectHeight) + ",";
     body += "\"object_zoom\":" + std::to_string(objectZoom) + ",";
     body += "\"object_hidden\":" + std::string(objectHidden ? "true" : "false") + ",";
+    body += "\"persistent_cache_mounted\":" + std::string(g_logoCacheMounted ? "true" : "false") + ",";
+    body += "\"persistent_cache_entries\":" + std::to_string(persistentCount) + ",";
+    body += "\"persistent_preferred_cached\":" + std::string(persistentPreferred ? "true" : "false") + ",";
+    body += "\"persistent_fallback_cached\":" + std::string(persistentFallback ? "true" : "false") + ",";
     body += "\"pending\":" + std::string(pending ? "true" : "false") + ",";
     body += "\"pending_key\":\"" + json_escape_text(pendingKey) + "\",";
     body += "\"missing_key\":\"" + json_escape_text(missingKey) + "\",";
@@ -1577,6 +1877,7 @@ extern "C" void app_main() {
     }
     ESP_ERROR_CHECK(nvsResult);
     settings.load();
+    ensure_logo_cache_mounted();
 
     g_aircraftMutex = xSemaphoreCreateMutex();
     configASSERT(g_aircraftMutex != nullptr);
@@ -1593,6 +1894,7 @@ extern "C" void app_main() {
     xTaskCreatePinnedToCore(adsb_http_task, "adsb_http", 12288, nullptr, 4, nullptr, 0);
     xTaskCreatePinnedToCore(route_lookup_task, "route_lookup", 12288, nullptr, 3, nullptr, 0);
     xTaskCreatePinnedToCore(airline_logo_task, "airline_logo", 12288, nullptr, 2, nullptr, 1);
+    xTaskCreatePinnedToCore(logo_prefetch_task, "logo_prefetch", 12288, nullptr, 1, nullptr, 1);
 
     init_lvgl();
     register_debug_routes();

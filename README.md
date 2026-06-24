@@ -75,6 +75,12 @@ device's NVS settings, is never written to source files, is not returned by the
 status JSON, and is not logged. Common local secret file patterns are ignored in
 `.gitignore`.
 
+Airline logo PNGs are cached on the device in the SPIFFS data partition. The
+firmware prefers cached airline logos before calling Logostream, stores newly
+fetched airline logos, and slowly prefetches the most common local airline
+logos to protect the API quota. Aircraft-specific liveries remain best-effort
+and are not persisted.
+
 ## Supported Input
 
 The initial parser supports SBS/BaseStation `MSG` records, for example:
