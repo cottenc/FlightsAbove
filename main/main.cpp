@@ -560,44 +560,6 @@ const lv_img_dsc_t* icon_descriptor(AircraftIcon icon) {
     }
 }
 
-const lv_img_dsc_t* icon_descriptor_for_type(const std::string& typeCode) {
-    struct TypeIcon {
-        const char* typeCode;
-        const lv_img_dsc_t* descriptor;
-    };
-    static constexpr TypeIcon kTypeIcons[] = {
-        {"A21N", &flightsabove_icon_type_a21n},
-        {"A321", &flightsabove_icon_type_a321},
-        {"A359", &flightsabove_icon_type_a359},
-        {"B38M", &flightsabove_icon_type_b38m},
-        {"B39M", &flightsabove_icon_type_b39m},
-        {"B737", &flightsabove_icon_type_b737},
-        {"B738", &flightsabove_icon_type_b738},
-        {"B739", &flightsabove_icon_type_b739},
-        {"B763", &flightsabove_icon_type_b763},
-        {"B77L", &flightsabove_icon_type_b77l},
-        {"B77W", &flightsabove_icon_type_b77w},
-        {"B789", &flightsabove_icon_type_b789},
-        {"C172", &flightsabove_icon_type_c172},
-        {"C68A", &flightsabove_icon_type_c68a},
-        {"E75L", &flightsabove_icon_type_e75l},
-    };
-
-    for (const TypeIcon& icon : kTypeIcons) {
-        if (typeCode == icon.typeCode) {
-            return icon.descriptor;
-        }
-    }
-    return nullptr;
-}
-
-const lv_img_dsc_t* icon_descriptor_for_aircraft(const Aircraft& aircraft) {
-    if (const lv_img_dsc_t* typed = icon_descriptor_for_type(aircraft.typeCode)) {
-        return typed;
-    }
-    return icon_descriptor(icon_for_aircraft(aircraft));
-}
-
 void position_plane_icon(lv_obj_t* image, const lv_point_t& center, int headingDeg,
                          const lv_img_dsc_t* descriptor, uint16_t zoom) {
     lv_img_set_src(image, descriptor);
@@ -857,7 +819,7 @@ void refresh_ui(lv_timer_t*) {
         const Aircraft& item = g_visibleAircraft[i];
         const lv_point_t point = radar_point(item.distanceNm, item.bearingDeg, rangeNm);
         const int heading = item.hasTrack ? item.trackDeg : item.bearingDeg;
-        const lv_img_dsc_t* descriptor = icon_descriptor_for_aircraft(item);
+        const lv_img_dsc_t* descriptor = icon_descriptor(icon_for_aircraft(item));
         position_plane_icon(g_planeShadows[i], point, heading, descriptor, kPlaneIconStrokeZoom);
         lv_obj_clear_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
         position_plane_icon(g_planeMarkers[i], point, heading, descriptor, kPlaneIconZoom);
