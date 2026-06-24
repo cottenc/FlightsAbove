@@ -699,7 +699,7 @@ void build_ui() {
     for (size_t i = 0; i < kVisibleAircraft; ++i) {
         g_trackLines[i] = lv_line_create(g_radar);
         lv_obj_set_style_line_width(g_trackLines[i], 3, 0);
-        lv_obj_set_style_line_color(g_trackLines[i], lv_color_hex(0x5DE3F7), 0);
+        lv_obj_set_style_line_color(g_trackLines[i], lv_color_hex(cfg::kColorCyan), 0);
         lv_obj_set_style_line_opa(g_trackLines[i], LV_OPA_70, 0);
         lv_obj_add_flag(g_trackLines[i], LV_OBJ_FLAG_HIDDEN);
 

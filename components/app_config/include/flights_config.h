@@ -39,8 +39,8 @@ constexpr uint32_t kColorPanel = 0x10211C;
 constexpr uint32_t kColorPanelAlt = 0x162B24;
 constexpr uint32_t kColorText = 0xF4F7F2;
 constexpr uint32_t kColorMuted = 0x92A098;
-constexpr uint32_t kColorGreen = 0x47D16C;
-constexpr uint32_t kColorCyan = 0x48D6D2;
+constexpr uint32_t kColorGreen = 0x00E85C;
+constexpr uint32_t kColorCyan = 0x00B7FF;
 constexpr uint32_t kColorAmber = 0xF2B84B;
 constexpr uint32_t kColorRunway = 0xDDE7DF;
 
