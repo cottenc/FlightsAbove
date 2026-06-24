@@ -85,10 +85,51 @@ constexpr size_t kLogoPersistentCacheMaxEntries = 32;
 constexpr double kMilesPerNm = 1.150779448;
 constexpr double kNmPerMile = 0.868976242;
 constexpr const char* kRouteApiUrl = "http://adsb.im/api/0/routeset";
-constexpr const char* kLogoApiBaseUrl = "https://airlines-api.logostream.dev/airlines/icao/";
+constexpr const char* kLogoApiBaseUrl = "https://api.logostream.dev/airlines/icao/";
+constexpr const char* kLogoIataApiBaseUrl = "https://api.logostream.dev/airlines/iata/";
 constexpr const char* kLiveryApiBaseUrl = "https://airlines-api.logostream.dev/livery/icao/";
 constexpr const char* kLogoCacheBasePath = "/spiffs/logos";
 const char* TAG = "flightsabove";
+
+const uint8_t kSkywestFallbackLogoPng[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x54, 0x00, 0x00, 0x00, 0x20,
+    0x04, 0x03, 0x00, 0x00, 0x00, 0x7e, 0xf6, 0x42, 0x25, 0x00, 0x00, 0x00,
+    0x18, 0x50, 0x4c, 0x54, 0x45, 0xf3, 0xf6, 0xf1, 0x14, 0x56, 0x96, 0x5e,
+    0x8d, 0xb5, 0x00, 0x38, 0x85, 0x96, 0xb4, 0xcc, 0xb2, 0xc9, 0xd8, 0x43,
+    0x7b, 0xab, 0x78, 0xa1, 0xc1, 0x75, 0x84, 0xfd, 0xd3, 0x00, 0x00, 0x00,
+    0x08, 0x74, 0x52, 0x4e, 0x53, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xf3, 0x81, 0x52, 0xd4, 0x00, 0x00, 0x01, 0x48, 0x49, 0x44, 0x41,
+    0x54, 0x78, 0xda, 0xed, 0x93, 0xc1, 0x4b, 0x02, 0x41, 0x18, 0xc5, 0xdf,
+    0xcc, 0xee, 0xd0, 0x28, 0x58, 0x3b, 0x23, 0x9d, 0x02, 0xdd, 0x25, 0x12,
+    0xa3, 0x8b, 0x4a, 0x50, 0x10, 0xd5, 0x66, 0x11, 0x54, 0x97, 0x0d, 0xba,
+    0x75, 0xb1, 0xa4, 0x43, 0xff, 0x55, 0xff, 0x40, 0x41, 0xc7, 0x4e, 0xd2,
+    0xa9, 0x63, 0x4b, 0x10, 0x7a, 0x88, 0xdc, 0x4e, 0x49, 0x84, 0x6e, 0x21,
+    0xcb, 0x84, 0xb6, 0x76, 0xa8, 0xd0, 0x0d, 0xf2, 0x1a, 0x84, 0xef, 0xf4,
+    0xe0, 0xfd, 0xe0, 0x7d, 0xf0, 0xf8, 0x80, 0x91, 0xfe, 0xad, 0x2c, 0x61,
+    0xc2, 0xfa, 0xb4, 0x64, 0x12, 0x96, 0x01, 0xf1, 0x9d, 0x30, 0x67, 0x00,
+    0xa3, 0x00, 0x31, 0x0c, 0x81, 0xe2, 0x17, 0x9a, 0x86, 0xcf, 0xfa, 0xe9,
+    0x0a, 0xa2, 0x28, 0xea, 0x75, 0xcf, 0x09, 0x9d, 0x3d, 0x66, 0x43, 0xd7,
+    0x42, 0x06, 0xaa, 0x5b, 0xd8, 0x9c, 0x01, 0xcb, 0x98, 0x48, 0xb9, 0xd1,
+    0x7e, 0x22, 0x6d, 0xa0, 0xcc, 0xf2, 0x54, 0x47, 0xd9, 0x11, 0xfa, 0x82,
+    0xa0, 0xf3, 0x34, 0x9f, 0xb4, 0xd7, 0x45, 0x52, 0x17, 0x72, 0x80, 0xd3,
+    0x00, 0xc6, 0xf9, 0x7b, 0x90, 0x1b, 0xaf, 0x76, 0x13, 0xca, 0x73, 0x63,
+    0xaa, 0x4d, 0x54, 0xb0, 0x7d, 0xdf, 0xf0, 0x1b, 0xad, 0xad, 0xdb, 0xa9,
+    0x8c, 0x17, 0x39, 0xa0, 0xf3, 0xea, 0x77, 0x1d, 0xdc, 0x94, 0x3a, 0x60,
+    0x19, 0xc8, 0x55, 0x48, 0x1b, 0x66, 0x50, 0x32, 0x0b, 0xb2, 0x19, 0x6d,
+    0xa7, 0x00, 0xdd, 0xa9, 0x1f, 0xba, 0x08, 0x4f, 0x50, 0x58, 0x7e, 0x43,
+    0xca, 0x35, 0x52, 0xae, 0x71, 0x86, 0x73, 0xff, 0xb2, 0xf7, 0x62, 0x47,
+    0x50, 0x0d, 0x28, 0x5e, 0xa9, 0xa7, 0xde, 0x74, 0x9c, 0x3f, 0x7a, 0xbe,
+    0xaf, 0x1e, 0xf8, 0xe2, 0x05, 0xcf, 0x26, 0x37, 0x2a, 0x7e, 0xa8, 0xe6,
+    0xae, 0xe3, 0xe9, 0x5a, 0x04, 0xf5, 0x66, 0x63, 0x13, 0xd9, 0xf8, 0xa9,
+    0x52, 0x94, 0xe7, 0x3c, 0xc2, 0x5d, 0xc2, 0x6b, 0xde, 0xdd, 0x71, 0x75,
+    0xbf, 0xdd, 0x1a, 0xa3, 0xcf, 0xcd, 0x9f, 0x13, 0x1c, 0xc1, 0x72, 0xd6,
+    0x4c, 0x26, 0x00, 0x2a, 0xa1, 0x0b, 0xe0, 0x40, 0x82, 0x0a, 0x09, 0x22,
+    0x7f, 0x59, 0x4d, 0x2f, 0x0c, 0x1d, 0x55, 0xeb, 0x5b, 0x96, 0x68, 0x07,
+    0xc3, 0x50, 0xda, 0xb7, 0x9d, 0xdd, 0xa5, 0xd1, 0x3f, 0xfc, 0x81, 0x3e,
+    0x00, 0x63, 0x88, 0x5a, 0xf4, 0x4b, 0x26, 0x24, 0x10, 0x00, 0x00, 0x00,
+    0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+};
 
 AircraftStore g_aircraftStore(cfg::kReceiverLatitude, cfg::kReceiverLongitude, cfg::kAircraftStaleMs);
 SbsParser g_parser;
@@ -140,6 +181,7 @@ struct ImageFetchTarget {
 };
 
 ImageFetchTarget image_target_for_aircraft(const Aircraft& aircraft, bool preferLivery);
+void seed_builtin_logo_cache();
 
 lv_img_dsc_t g_logoDescriptor = {};
 std::string g_logoPngData;
@@ -147,8 +189,17 @@ std::string g_logoCode;
 std::string g_pendingLogoPngData;
 std::string g_pendingLogoCode;
 std::string g_missingLogoCode;
+std::string g_lastLogoPrefetchKey;
+std::string g_lastLogoPrefetchEndpoint;
+std::string g_lastLogoPrefetchSignature;
 int64_t g_logoLastSuccessMs = 0;
 int64_t g_logoRetryAfterMs = 0;
+int64_t g_lastLogoPrefetchMs = 0;
+esp_err_t g_lastLogoPrefetchError = ESP_OK;
+int g_lastLogoPrefetchStatus = 0;
+size_t g_lastLogoPrefetchBytes = 0;
+bool g_lastLogoPrefetchPng = false;
+bool g_lastLogoPrefetchStored = false;
 bool g_pendingLogoReady = false;
 uint16_t g_logoImageWidth = 0;
 uint16_t g_logoImageHeight = 0;
@@ -158,6 +209,19 @@ int64_t g_lastActivityMs = 0;
 bool g_displaySleeping = false;
 
 static lv_disp_drv_t* g_dispDrv = nullptr;
+
+std::string response_signature(const std::string& body) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string output;
+    const size_t count = std::min<size_t>(body.size(), 12);
+    output.reserve(count * 2);
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t byte = static_cast<uint8_t>(body[i]);
+        output.push_back(kHex[(byte >> 4) & 0x0F]);
+        output.push_back(kHex[byte & 0x0F]);
+    }
+    return output;
+}
 
 struct HttpResponse {
     std::string body;
@@ -1378,7 +1442,7 @@ bool looks_like_png(const std::string& data) {
 }
 
 const char* const kCommonAirlineIcao[] = {
-    "ASA", "DAL", "QXE", "SKW", "UAL", "SWA", "AAL", "JZA", "ACA", "WJA",
+    "SKW", "ASA", "DAL", "QXE", "UAL", "SWA", "AAL", "JZA", "ACA", "WJA",
     "ROU", "ATN", "UPS", "ICE", "FDX", "BAW", "ANA", "AAY", "FFT", "CFS",
 };
 
@@ -1410,6 +1474,7 @@ bool ensure_logo_cache_mounted() {
              static_cast<unsigned>(used), static_cast<unsigned>(total));
     mkdir(kLogoCacheBasePath, 0775);
     g_logoCacheMounted = true;
+    seed_builtin_logo_cache();
     return true;
 }
 
@@ -1552,6 +1617,24 @@ void write_logo_to_cache(const ImageFetchTarget& target, const std::string& pngD
     ESP_LOGI(TAG, "logo stored in persistent cache for %s", target.key.c_str());
 }
 
+void seed_builtin_logo_cache() {
+    static bool attempted = false;
+    if (attempted) {
+        return;
+    }
+    if (logo_cache_file_exists("A:SKW")) {
+        attempted = true;
+        return;
+    }
+
+    ImageFetchTarget target;
+    target.key = "A:SKW";
+    std::string png(reinterpret_cast<const char*>(kSkywestFallbackLogoPng),
+                    sizeof(kSkywestFallbackLogoPng));
+    write_logo_to_cache(target, png);
+    attempted = logo_cache_file_exists("A:SKW");
+}
+
 bool queue_logo_for_display(const ImageFetchTarget& target, std::string& pngData, int64_t now) {
     if (target.key.empty() || !looks_like_png(pngData)) {
         return false;
@@ -1620,7 +1703,33 @@ std::string image_url_with_key(const ImageFetchTarget& target, const std::string
            url_query_escape(apiKey);
 }
 
+std::string iata_code_for_airline_icao(const std::string& code) {
+    if (code == "SKW") {
+        return "OO";
+    }
+    return "";
+}
+
+esp_err_t fetch_image_target(const ImageFetchTarget& target, const std::string& apiKey,
+                             std::string& body, int* status, std::string* endpointUsed) {
+    body.clear();
+    if (status != nullptr) {
+        *status = 0;
+    }
+    if (endpointUsed != nullptr) {
+        *endpointUsed = target.livery ? "livery-query-key" : "logo-query-key";
+    }
+
+    return http_get(image_url_with_key(target, apiKey).c_str(),
+                    kLogoPngMaxBytes, body, status);
+}
+
 std::string logo_url_for_airline_icao(const std::string& code) {
+    const std::string iata = iata_code_for_airline_icao(code);
+    if (!iata.empty()) {
+        return std::string(kLogoIataApiBaseUrl) + iata +
+               "?variant=logo-bg-white&format=png&size=84";
+    }
     return std::string(kLogoApiBaseUrl) + code +
            "?variant=logo-bg-white&format=png&size=84";
 }
@@ -1756,8 +1865,8 @@ void airline_logo_task(void*) {
         int status = 0;
         lastLookupMs = now_ms();
         ++lookupsThisWindow;
-        std::string requestUrl = image_url_with_key(target, apiKey);
-        esp_err_t err = http_get(requestUrl.c_str(), kLogoPngMaxBytes, body, &status);
+        std::string endpointUsed;
+        esp_err_t err = fetch_image_target(target, apiKey, body, &status, &endpointUsed);
         if (target.livery && !(err == ESP_OK && status == 200 && looks_like_png(body))) {
             if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 g_missingLogoCode = target.key;
@@ -1793,8 +1902,8 @@ void airline_logo_task(void*) {
             vTaskDelay(pdMS_TO_TICKS(500));
             {
                 ++lookupsThisWindow;
-                requestUrl = image_url_with_key(target, apiKey);
-                err = http_get(requestUrl.c_str(), kLogoPngMaxBytes, body, &status);
+                endpointUsed.clear();
+                err = fetch_image_target(target, apiKey, body, &status, &endpointUsed);
             }
         }
         const int64_t responseNow = now_ms();
@@ -1856,14 +1965,28 @@ void logo_prefetch_task(void*) {
             std::string body;
             int status = 0;
             ++lookupsThisWindow;
-            const esp_err_t err = http_get(image_url_with_key(target, apiKey).c_str(),
-                                           kLogoPngMaxBytes, body, &status);
-            if (err == ESP_OK && status == 200 && looks_like_png(body)) {
+            std::string endpointUsed;
+            const esp_err_t err = fetch_image_target(target, apiKey, body, &status, &endpointUsed);
+            const bool png = looks_like_png(body);
+            const bool stored = err == ESP_OK && status == 200 && png;
+            if (stored) {
                 write_logo_to_cache(target, body);
                 ESP_LOGI(TAG, "prefetched common airline logo for %s", target.key.c_str());
             } else {
                 ESP_LOGW(TAG, "common logo prefetch failed for %s: %s status=%d",
                          target.key.c_str(), esp_err_to_name(err), status);
+            }
+            if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                g_lastLogoPrefetchKey = target.key;
+                g_lastLogoPrefetchEndpoint = endpointUsed;
+                g_lastLogoPrefetchSignature = response_signature(body);
+                g_lastLogoPrefetchMs = now_ms();
+                g_lastLogoPrefetchError = err;
+                g_lastLogoPrefetchStatus = status;
+                g_lastLogoPrefetchBytes = body.size();
+                g_lastLogoPrefetchPng = png;
+                g_lastLogoPrefetchStored = stored;
+                xSemaphoreGive(g_logoMutex);
             }
             fetched = true;
             break;
@@ -1920,7 +2043,11 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     std::string cachedKey;
     std::string pendingKey;
     std::string missingKey;
+    std::string prefetchKey;
+    std::string prefetchEndpoint;
+    std::string prefetchSignature;
     size_t cachedBytes = 0;
+    size_t prefetchBytes = 0;
     uint16_t cachedWidth = 0;
     uint16_t cachedHeight = 0;
     lv_coord_t objectWidth = 0;
@@ -1929,21 +2056,38 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     bool objectHidden = true;
     const bool persistentPreferred = logo_cache_file_exists(preferred.key);
     const bool persistentFallback = logo_cache_file_exists(fallback.key);
+    const bool persistentSkywestCached = logo_cache_file_exists("A:SKW");
     const size_t persistentCount = logo_cache_entry_count();
     bool pending = false;
+    bool prefetchPng = false;
+    bool prefetchStored = false;
     int64_t retryAfterMs = 0;
     int64_t lastSuccessAgeMs = -1;
+    int64_t lastPrefetchAgeMs = -1;
+    esp_err_t prefetchErr = ESP_OK;
+    int prefetchStatus = 0;
     if (xSemaphoreTake(g_logoMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         cachedKey = g_logoCode;
         pendingKey = g_pendingLogoCode;
         missingKey = g_missingLogoCode;
+        prefetchKey = g_lastLogoPrefetchKey;
+        prefetchEndpoint = g_lastLogoPrefetchEndpoint;
+        prefetchSignature = g_lastLogoPrefetchSignature;
         cachedBytes = g_logoDescriptor.data_size;
+        prefetchBytes = g_lastLogoPrefetchBytes;
         cachedWidth = g_logoImageWidth;
         cachedHeight = g_logoImageHeight;
         pending = g_pendingLogoReady;
+        prefetchPng = g_lastLogoPrefetchPng;
+        prefetchStored = g_lastLogoPrefetchStored;
         retryAfterMs = g_logoRetryAfterMs;
+        prefetchErr = g_lastLogoPrefetchError;
+        prefetchStatus = g_lastLogoPrefetchStatus;
         if (g_logoLastSuccessMs > 0) {
             lastSuccessAgeMs = now - g_logoLastSuccessMs;
+        }
+        if (g_lastLogoPrefetchMs > 0) {
+            lastPrefetchAgeMs = now - g_lastLogoPrefetchMs;
         }
         xSemaphoreGive(g_logoMutex);
     }
@@ -1974,11 +2118,21 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     body += "\"persistent_cache_entries\":" + std::to_string(persistentCount) + ",";
     body += "\"persistent_preferred_cached\":" + std::string(persistentPreferred ? "true" : "false") + ",";
     body += "\"persistent_fallback_cached\":" + std::string(persistentFallback ? "true" : "false") + ",";
+    body += "\"persistent_skywest_cached\":" + std::string(persistentSkywestCached ? "true" : "false") + ",";
     body += "\"pending\":" + std::string(pending ? "true" : "false") + ",";
     body += "\"pending_key\":\"" + json_escape_text(pendingKey) + "\",";
     body += "\"missing_key\":\"" + json_escape_text(missingKey) + "\",";
     body += "\"retry_after_ms\":" + std::to_string(retryAfterMs) + ",";
     body += "\"last_success_age_ms\":" + std::to_string(lastSuccessAgeMs) + ",";
+    body += "\"last_prefetch_key\":\"" + json_escape_text(prefetchKey) + "\",";
+    body += "\"last_prefetch_endpoint\":\"" + json_escape_text(prefetchEndpoint) + "\",";
+    body += "\"last_prefetch_signature\":\"" + json_escape_text(prefetchSignature) + "\",";
+    body += "\"last_prefetch_error\":\"" + json_escape_text(esp_err_to_name(prefetchErr)) + "\",";
+    body += "\"last_prefetch_status\":" + std::to_string(prefetchStatus) + ",";
+    body += "\"last_prefetch_bytes\":" + std::to_string(prefetchBytes) + ",";
+    body += "\"last_prefetch_png\":" + std::string(prefetchPng ? "true" : "false") + ",";
+    body += "\"last_prefetch_stored\":" + std::string(prefetchStored ? "true" : "false") + ",";
+    body += "\"last_prefetch_age_ms\":" + std::to_string(lastPrefetchAgeMs) + ",";
     const bool displayable = settings.hasLogostreamApiKey() &&
                              cachedBytes > 0 &&
                              (cachedKey == preferred.key || cachedKey == fallback.key);
