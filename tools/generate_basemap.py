@@ -19,7 +19,8 @@ from PIL import Image, ImageDraw, ImageEnhance
 
 DEFAULT_LAT = 47.68571
 DEFAULT_LON = -122.31595
-DEFAULT_RANGE_MILES = 150.0
+DEFAULT_LONG_RANGE_MILES = 150.0
+DEFAULT_CLOSE_RANGE_MILES = 25.0
 WIDTH = 432
 HEIGHT = 318
 RADAR_RADIUS = 146
@@ -134,21 +135,10 @@ def rgb565_bytes(image: Image.Image) -> bytes:
     return bytes(data)
 
 
-def write_cpp(image: Image.Image, header_path: pathlib.Path, source_path: pathlib.Path) -> None:
+def write_image_lines(image: Image.Image, symbol: str) -> list[str]:
     data = rgb565_bytes(image)
-    header_path.write_text(
-        "#pragma once\n\n"
-        "#include \"lvgl.h\"\n\n"
-        "LV_IMG_DECLARE(flightsabove_basemap_default);\n",
-        encoding="utf-8",
-    )
-
     lines = [
-        "#include \"basemap_default.h\"",
-        "",
-        "#include \"lvgl.h\"",
-        "",
-        f"const LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST uint8_t flightsabove_basemap_default_map[{len(data)}] = {{",
+        f"const LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST uint8_t {symbol}_map[{len(data)}] = {{",
     ]
     for index in range(0, len(data), 16):
         chunk = data[index : index + 16]
@@ -157,14 +147,38 @@ def write_cpp(image: Image.Image, header_path: pathlib.Path, source_path: pathli
         [
             "};",
             "",
-            "const lv_img_dsc_t flightsabove_basemap_default = {",
+            f"const lv_img_dsc_t {symbol} = {{",
             f"    {{LV_IMG_CF_TRUE_COLOR, 0, 0, {WIDTH}, {HEIGHT}}},",
             f"    {len(data)},",
-            "    flightsabove_basemap_default_map,",
+            f"    {symbol}_map,",
             "};",
             "",
         ]
     )
+    return lines
+
+
+def write_cpp(
+    images: list[tuple[str, Image.Image]],
+    header_path: pathlib.Path,
+    source_path: pathlib.Path,
+) -> None:
+    declarations = "".join(f"LV_IMG_DECLARE({symbol});\n" for symbol, _ in images)
+    header_path.write_text(
+        "#pragma once\n\n"
+        "#include \"lvgl.h\"\n\n"
+        + declarations,
+        encoding="utf-8",
+    )
+
+    lines = [
+        "#include \"basemap_default.h\"",
+        "",
+        "#include \"lvgl.h\"",
+        "",
+    ]
+    for symbol, image in images:
+        lines.extend(write_image_lines(image, symbol))
     source_path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -172,20 +186,33 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lat", type=float, default=DEFAULT_LAT)
     parser.add_argument("--lon", type=float, default=DEFAULT_LON)
-    parser.add_argument("--range-miles", type=float, default=DEFAULT_RANGE_MILES)
+    parser.add_argument("--long-range-miles", type=float, default=DEFAULT_LONG_RANGE_MILES)
+    parser.add_argument("--close-range-miles", type=float, default=DEFAULT_CLOSE_RANGE_MILES)
     parser.add_argument("--cache-dir", type=pathlib.Path, default=pathlib.Path(".tile-cache"))
     parser.add_argument("--preview", type=pathlib.Path, default=pathlib.Path("docs/basemap_default_preview.png"))
+    parser.add_argument("--close-preview", type=pathlib.Path, default=pathlib.Path("docs/basemap_close_preview.png"))
     parser.add_argument("--header", type=pathlib.Path, default=pathlib.Path("main/basemap_default.h"))
     parser.add_argument("--source", type=pathlib.Path, default=pathlib.Path("main/basemap_default.cpp"))
     args = parser.parse_args()
 
-    image = render_basemap(args.lat, args.lon, args.range_miles, args.cache_dir)
+    long_image = render_basemap(args.lat, args.lon, args.long_range_miles, args.cache_dir)
+    close_image = render_basemap(args.lat, args.lon, args.close_range_miles, args.cache_dir)
     args.preview.parent.mkdir(parents=True, exist_ok=True)
-    image.save(args.preview)
-    write_cpp(image, args.header, args.source)
+    args.close_preview.parent.mkdir(parents=True, exist_ok=True)
+    long_image.save(args.preview)
+    close_image.save(args.close_preview)
+    write_cpp(
+        [
+            ("flightsabove_basemap_long", long_image),
+            ("flightsabove_basemap_close", close_image),
+        ],
+        args.header,
+        args.source,
+    )
     print(
-        f"Generated {args.source} and {args.preview} "
-        f"for {args.lat:.5f},{args.lon:.5f} at {args.range_miles:.0f} mi"
+        f"Generated {args.source}, {args.preview}, and {args.close_preview} "
+        f"for {args.lat:.5f},{args.lon:.5f} at "
+        f"{args.close_range_miles:.0f}/{args.long_range_miles:.0f} mi"
     )
 
 

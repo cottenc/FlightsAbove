@@ -2,4 +2,5 @@
 
 #include "lvgl.h"
 
-LV_IMG_DECLARE(flightsabove_basemap_default);
+LV_IMG_DECLARE(flightsabove_basemap_long);
+LV_IMG_DECLARE(flightsabove_basemap_close);

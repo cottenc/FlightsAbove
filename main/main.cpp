@@ -47,6 +47,9 @@ constexpr size_t kPlaneIconPointCapacity = 16;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
+constexpr double kCloseBasemapRangeMiles = 25.0;
+constexpr double kLongBasemapRangeMiles = 150.0;
+constexpr double kCloseBasemapMaxRangeMiles = 25.0;
 constexpr size_t kHttpAircraftCapacity = 32;
 constexpr size_t kRouteBatchCapacity = 4;
 constexpr int kHttpTimeoutMs = 4000;
@@ -86,6 +89,7 @@ lv_obj_t* g_rangeLabel = nullptr;
 lv_obj_t* g_outerRangeLabel = nullptr;
 lv_obj_t* g_radar = nullptr;
 lv_obj_t* g_basemap = nullptr;
+double g_basemapSourceRangeMiles = kLongBasemapRangeMiles;
 lv_obj_t* g_planeShadows[kVisibleAircraft] = {};
 lv_obj_t* g_planeMarkers[kVisibleAircraft] = {};
 lv_obj_t* g_trackLines[kVisibleAircraft] = {};
@@ -349,8 +353,16 @@ void update_basemap_zoom(double rangeMiles) {
         return;
     }
 
-    const double maxRangeMiles = static_cast<double>(settings.getRadarRangeMiles());
-    const double zoom = 256.0 * maxRangeMiles / rangeMiles;
+    const bool useCloseBasemap = rangeMiles <= kCloseBasemapMaxRangeMiles;
+    const double sourceRangeMiles = useCloseBasemap ? kCloseBasemapRangeMiles : kLongBasemapRangeMiles;
+    if (sourceRangeMiles != g_basemapSourceRangeMiles) {
+        lv_img_set_src(g_basemap, useCloseBasemap
+            ? &flightsabove_basemap_close
+            : &flightsabove_basemap_long);
+        g_basemapSourceRangeMiles = sourceRangeMiles;
+    }
+
+    const double zoom = 256.0 * sourceRangeMiles / rangeMiles;
     const uint16_t lvZoom = static_cast<uint16_t>(
         std::max(128.0, std::min(4096.0, std::round(zoom))));
     lv_img_set_zoom(g_basemap, lvZoom);
@@ -559,7 +571,7 @@ void build_ui() {
     lv_obj_clear_flag(g_radar, LV_OBJ_FLAG_SCROLLABLE);
 
     g_basemap = lv_img_create(g_radar);
-    lv_img_set_src(g_basemap, &flightsabove_basemap_default);
+    lv_img_set_src(g_basemap, &flightsabove_basemap_long);
     lv_img_set_pivot(g_basemap, kRadarWidth / 2, kRadarHeight / 2);
     lv_img_set_zoom(g_basemap, 256);
     lv_obj_set_pos(g_basemap, 0, 0);
