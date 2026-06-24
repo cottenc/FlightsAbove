@@ -6,6 +6,11 @@
 
 namespace cfg {
 
+constexpr const char* kDeviceName = "FlightsAbove";
+constexpr const char* kSetupApSsid = "FlightsAbove-Setup";
+constexpr const char* kSetupHostname = "flightsabove";
+constexpr uint16_t kSetupPortalPort = 80;
+
 constexpr int kDisplayWidth = 480;
 constexpr int kDisplayHeight = 480;
 
@@ -16,8 +21,10 @@ constexpr int kAdsbBaudRate = 9600;
 constexpr int kAdsbRxBufferBytes = 4096;
 constexpr int kAdsbLineMax = 240;
 
-constexpr double kReceiverLatitude = 37.62131;
-constexpr double kReceiverLongitude = -122.37896;
+constexpr double kDefaultReceiverLatitude = 37.62131;
+constexpr double kDefaultReceiverLongitude = -122.37896;
+constexpr double kReceiverLatitude = kDefaultReceiverLatitude;
+constexpr double kReceiverLongitude = kDefaultReceiverLongitude;
 
 constexpr int64_t kAircraftStaleMs = 120000;
 constexpr uint32_t kUiRefreshMs = 500;

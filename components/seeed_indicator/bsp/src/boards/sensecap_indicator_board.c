@@ -95,7 +95,7 @@ static const board_res_desc_t g_board_lcd_evb_res = {
 
     .LCD_WIDTH =       (CONFIG_LCD_EVB_SCREEN_WIDTH),
     .LCD_HEIGHT =      (CONFIG_LCD_EVB_SCREEN_HEIGHT),
-    .LCD_COLOR_SPACE = ESP_LCD_COLOR_SPACE_RGB,
+    .LCD_RGB_ELEMENT_ORDER = LCD_RGB_ELEMENT_ORDER_RGB,
 
     // RGB interface GPIOs for LCD panel
     .GPIO_LCD_DISP_EN = GPIO_NUM_NC,  //future controlled via expanded io

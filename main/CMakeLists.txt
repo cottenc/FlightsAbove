@@ -5,12 +5,15 @@ idf_component_register(
         "."
     REQUIRES
         adsb
-        driver
+        app_config
+        device_network
+        esp_driver_uart
         esp_timer
         freertos
         log
         lvgl__lvgl
         nvs_flash
         platform
+        storage
         ui_layout
 )

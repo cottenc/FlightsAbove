@@ -9,6 +9,17 @@ namespace adsb {
 AircraftStore::AircraftStore(double receiverLatitude, double receiverLongitude, int64_t staleMs)
     : receiverLatitude_(receiverLatitude), receiverLongitude_(receiverLongitude), staleMs_(staleMs) {}
 
+void AircraftStore::setReceiverLocation(double latitude, double longitude) {
+    receiverLatitude_ = latitude;
+    receiverLongitude_ = longitude;
+    for (Aircraft& item : aircraft_) {
+        if (item.hasPosition) {
+            item.distanceNm = distanceNm(receiverLatitude_, receiverLongitude_,
+                                         item.latitude, item.longitude);
+        }
+    }
+}
+
 void AircraftStore::applyUpdate(const AircraftUpdate& update, int64_t nowMs) {
     if (update.icao.empty()) {
         return;

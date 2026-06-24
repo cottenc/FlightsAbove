@@ -13,6 +13,7 @@ class AircraftStore {
 
     AircraftStore(double receiverLatitude, double receiverLongitude, int64_t staleMs);
 
+    void setReceiverLocation(double latitude, double longitude);
     void applyUpdate(const AircraftUpdate& update, int64_t nowMs);
     void purgeStale(int64_t nowMs);
     size_t snapshot(Aircraft* output, size_t capacity, int64_t nowMs) const;

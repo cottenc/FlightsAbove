@@ -1,7 +1,9 @@
 #include "aircraft_store.h"
+#include "device_network.h"
 #include "flights_config.h"
 #include "platform.h"
 #include "sbs_parser.h"
+#include "storage.h"
 #include "ui_layout.h"
 
 #include "driver/uart.h"
@@ -39,11 +41,21 @@ lv_obj_t* g_statusLabel = nullptr;
 lv_obj_t* g_nearestCallsign = nullptr;
 lv_obj_t* g_nearestMeta = nullptr;
 lv_obj_t* g_listLabels[kVisibleAircraft] = {};
+int64_t g_lastActivityMs = 0;
+bool g_displaySleeping = false;
 
 static lv_disp_drv_t* g_dispDrv = nullptr;
 
 int64_t now_ms() {
     return esp_timer_get_time() / 1000;
+}
+
+void mark_activity() {
+    g_lastActivityMs = now_ms();
+    if (g_displaySleeping) {
+        platform::setBacklight(true);
+        g_displaySleeping = false;
+    }
 }
 
 bool flush_done_cb(void*) {
@@ -102,6 +114,7 @@ void touch_read(lv_indev_drv_t*, lv_indev_data_t* data) {
     const auto& caps = platform::capabilities();
     esp_err_t err = platform::readTouch(&pointCount, &x, &y, &button);
     if (err == ESP_OK && pointCount > 0 && x < caps.width && y < caps.height) {
+        mark_activity();
         lastX = x;
         lastY = y;
         data->state = LV_INDEV_STATE_PR;
@@ -229,6 +242,8 @@ void refresh_ui(lv_timer_t*) {
     const int64_t now = now_ms();
 
     if (xSemaphoreTake(g_aircraftMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        g_aircraftStore.setReceiverLocation(settings.getReceiverLatitude(),
+                                            settings.getReceiverLongitude());
         g_aircraftStore.purgeStale(now);
         count = g_aircraftStore.snapshot(aircraft, kVisibleAircraft, now);
         activeCount = g_aircraftStore.activeCount(now);
@@ -238,6 +253,19 @@ void refresh_ui(lv_timer_t*) {
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%u aircraft", static_cast<unsigned>(activeCount));
     lv_label_set_text(g_countLabel, buffer);
+
+    device_network::Snapshot network = device_network::snapshot();
+    snprintf(buffer, sizeof(buffer), "%s | %s",
+             network.stationConnected ? network.stationIp : network.setupUrl,
+             "UART1 RX GPIO17");
+    lv_label_set_text(g_statusLabel, buffer);
+
+    const uint16_t sleepMin = settings.getDisplaySleepMin();
+    if (!g_displaySleeping && sleepMin > 0 &&
+        now - g_lastActivityMs >= static_cast<int64_t>(sleepMin) * 60 * 1000) {
+        platform::setBacklight(false);
+        g_displaySleeping = true;
+    }
 
     if (count == 0) {
         lv_label_set_text(g_nearestCallsign, "--");
@@ -330,6 +358,7 @@ void init_lvgl() {
     }
 
     build_ui();
+    mark_activity();
     lv_timer_create(refresh_ui, cfg::kUiRefreshMs, nullptr);
     refresh_ui(nullptr);
     lv_obj_invalidate(lv_scr_act());
@@ -400,10 +429,12 @@ extern "C" void app_main() {
         nvsResult = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvsResult);
+    settings.load();
 
     g_aircraftMutex = xSemaphoreCreateMutex();
     configASSERT(g_aircraftMutex != nullptr);
 
+    device_network::begin();
     init_adsb_uart();
     xTaskCreatePinnedToCore(adsb_task, "adsb_uart", 4096, nullptr, 5, nullptr, 0);
 

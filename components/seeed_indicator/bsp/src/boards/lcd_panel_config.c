@@ -74,7 +74,7 @@ static struct interface_io s_io = {
     .sdo = -1
 #endif
 };
-static io_expander_ops_t *io_ops = NULL;
+static const io_expander_ops_t *io_ops = NULL;
 
 #if LCD_IO_SCHEME != 0  //seeed boards
 static esp_err_t _selective_gpio_set_level(gpio_num_t gpio_num, uint32_t level)

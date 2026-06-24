@@ -36,7 +36,7 @@ static SemaphoreHandle_t flush_ready = NULL;
 
 #if CONFIG_LCD_LVGL_DIRECT_MODE
 static bool (*lvgl_flush_is_end)(void) = NULL;
-static bool (*lvgl_direct_mode_buf_copy)(void) = NULL;
+static void (*lvgl_direct_mode_buf_copy)(void) = NULL;
 #endif
 
 static void *p_user_data = NULL;
@@ -77,7 +77,7 @@ static esp_err_t screen_clear(uint16_t color)
 
 IRAM_ATTR static bool on_vsync_event(
     esp_lcd_panel_handle_t panel,
-    esp_lcd_rgb_panel_event_data_t *edata,
+    const esp_lcd_rgb_panel_event_data_t *edata,
     void *user_ctx
 )
 {
@@ -94,14 +94,14 @@ IRAM_ATTR static bool on_vsync_event(
 esp_err_t bsp_lcd_init(void)
 {
     esp_err_t ret_val = ESP_OK;
-    board_res_desc_t *brd = bsp_board_get_description();
+    const board_res_desc_t *brd = bsp_board_get_description();
     if (!brd->FUNC_LCD_EN) {
         return ESP_OK;
     }
 
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = brd->GPIO_LCD_RST,
-        .color_space = brd->LCD_COLOR_SPACE,
+        .rgb_ele_order = brd->LCD_RGB_ELEMENT_ORDER,
         .bits_per_pixel = 16,
     };
 
@@ -156,8 +156,7 @@ esp_err_t bsp_lcd_init(void)
             },
             .bus_width = brd->LCD_BUS_WIDTH,
             .max_transfer_bytes = brd->LCD_WIDTH * brd->LCD_HEIGHT * sizeof(uint16_t),
-            .psram_trans_align = 64,
-            .sram_trans_align = 4,
+            .dma_burst_size = 64,
         };
         ESP_ERROR_CHECK(esp_lcd_new_i80_bus(&bus_config, &i80_bus));
         esp_lcd_panel_io_i80_config_t io_config = {
@@ -251,11 +250,6 @@ esp_err_t bsp_lcd_init(void)
     esp_lcd_panel_invert_color(panel_handle, brd->LCD_COLOR_INV);
     esp_lcd_panel_set_gap(panel_handle, 0, 0);
     esp_lcd_panel_swap_xy(panel_handle, brd->LCD_SWAP_XY);
-    if (brd->LCD_SWAP_XY) {
-        brd->LCD_WIDTH = brd->LCD_WIDTH + brd->LCD_HEIGHT;
-        brd->LCD_HEIGHT = brd->LCD_WIDTH - brd->LCD_HEIGHT;
-        brd->LCD_WIDTH = brd->LCD_WIDTH - brd->LCD_HEIGHT;
-    }
     esp_lcd_panel_mirror(panel_handle, brd->LCD_MIRROR_X, brd->LCD_MIRROR_Y);
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     esp_lcd_panel_disp_on_off(panel_handle, true);
@@ -264,7 +258,7 @@ esp_err_t bsp_lcd_init(void)
 #endif
 
 #if CONFIG_LCD_AVOID_TEAR
-    esp_lcd_rgb_panel_get_frame_buffer(panel_handle, 2, &lcd_buf0, &lcd_buf1);
+    esp_lcd_rgb_panel_get_frame_buffer(panel_handle, 2, (void**)&lcd_buf0, (void**)&lcd_buf1);
     if (LCD_IFACE_RGB == brd->LCD_IFACE) {
         const size_t frame_bytes = brd->LCD_WIDTH * brd->LCD_HEIGHT * sizeof(uint16_t);
         memset(lcd_buf0, 0, frame_bytes);

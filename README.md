@@ -1,12 +1,12 @@
 # FlightsAbove
 
-ESP32 firmware that displays nearby aircraft from decoded ADS-B messages.
+ESP-IDF 6 firmware that displays nearby aircraft from decoded ADS-B messages.
 
 FlightsAbove reads SBS/BaseStation-style ADS-B text over an ESP32 UART, tracks
 the most recent aircraft state, and renders nearby traffic on the SenseCAP
 Indicator D1Pro 480x480 touchscreen.
 
-This project reuses the proven ESP-IDF display/platform structure from
+This project reuses the proven native ESP-IDF display/platform structure from
 [`cottenc/espresso`](https://github.com/cottenc/espresso), including the
 SenseCAP board support component, LVGL framebuffer setup, layout profiles, and
 LCD timing defaults.
@@ -28,16 +28,42 @@ decoded messages.
 | ADS-B decoder GND | GND |
 
 Only the ESP32 RX pin is required if the ADS-B decoder is transmit-only.
-Change the UART pins in `main/flights_config.h` if your hardware uses a
-different connector.
+Change the UART pins in `components/app_config/include/flights_config.h` if
+your hardware uses a different connector.
 
 ## Configure
 
-Edit `main/flights_config.h` before uploading:
+Compile-time defaults live in `components/app_config/include/flights_config.h`:
 
-- `kReceiverLatitude` and `kReceiverLongitude`
 - `kAdsbRxPin`, `kAdsbTxPin`, and `kAdsbBaudRate`
+- setup AP name and hostname
 - stale-aircraft timeout and UI refresh timing
+
+Receiver location and Wi-Fi credentials can be configured from the device setup
+portal and are stored in NVS.
+
+## Setup Portal
+
+FlightsAbove starts a setup access point named `FlightsAbove-Setup` on boot.
+Join that network and open the setup URL shown at the bottom of the device
+display, usually:
+
+```text
+http://192.168.4.1/
+```
+
+The portal provides:
+
+- Wi-Fi credential setup
+- receiver latitude/longitude
+- display sleep preference
+- status JSON
+- restart and factory reset actions
+- OTA app firmware upload
+
+For OTA updates, build the project and upload `build/flightsabove.bin` from the
+portal. The device writes the app to the inactive OTA partition and reboots
+after a successful upload.
 
 ## Supported Input
 
@@ -50,22 +76,28 @@ MSG,1,1,1,A8B32F,1,2026/06/23,12:00:02.000,2026/06/23,12:00:02.000,UAL123,,,,,,,
 
 ## Build And Upload
 
-Install ESP-IDF 5.1 or newer, export the environment, then run:
+Install ESP-IDF 6.0 or newer, export the environment, then run:
 
 ```sh
-. $IDF_PATH/export.sh
+. ~/esp/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/cu.usbserial-* flash monitor
 ```
+
+The firmware is intentionally kept as a clean ESP-IDF project. It does not use
+Arduino, `arduino-esp32`, or Arduino compatibility components.
 
 ## Project Layout
 
 ```text
 components/adsb/             Aircraft state, SBS parser, fixed-size tracker
+components/app_config/       Shared device defaults and pins
+components/device_network/   Wi-Fi setup AP, setup portal server, OTA upload
 components/platform/         Reused display platform adapter from espresso
 components/seeed_indicator/  Reused SenseCAP board support from espresso
+components/setup_portal/     Generic FlightsAbove setup HTML
+components/storage/          NVS-backed Wi-Fi and receiver settings
 components/ui_layout/        Reused layout profile structure
-main/flights_config.h        Device and receiver configuration
 main/main.cpp                UART ingest task and LVGL UI
 ```
 
@@ -73,5 +105,4 @@ main/main.cpp                UART ingest task and LVGL UI
 
 - Add optional Wi-Fi ingest from a local dump1090 endpoint
 - Add directional radar plotting when aircraft bearing is available
-- Persist receiver location and display options in NVS
 - Support additional decoded formats such as Beast-to-text bridge output

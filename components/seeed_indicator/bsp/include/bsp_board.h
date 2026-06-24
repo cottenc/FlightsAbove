@@ -11,7 +11,6 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "driver/adc.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_types.h"
 #include "../codec/audio_hal.h"
@@ -196,8 +195,8 @@ typedef struct {
     esp_err_t (*init)(uint8_t i2c_addr);
     esp_err_t (*set_direction)(uint8_t pin, bool is_output);
     esp_err_t (*set_level)(uint8_t pin, bool level);
-    esp_err_t (*read_output_pins)(uint8_t *pin_val);
-    esp_err_t (*read_input_pins)(uint8_t *pin_val);
+    esp_err_t (*read_output_pins)(uint16_t *pin_val);
+    esp_err_t (*read_input_pins)(uint16_t *pin_val);
     esp_err_t (*multi_write_start)(void);
     esp_err_t (*multi_write_new_level)(int pin, bool new_level);
     esp_err_t (*multi_write_end)(void);
@@ -230,7 +229,7 @@ typedef struct {
     bool LCD_MIRROR_X    ;
     bool LCD_MIRROR_Y    ;
     bool LCD_COLOR_INV   ;
-    esp_lcd_color_space_t LCD_COLOR_SPACE;
+    lcd_rgb_element_order_t LCD_RGB_ELEMENT_ORDER;
 
     // SPI interface GPIOs for LCD panel
     int GPIO_LCD_BL     ;
@@ -281,7 +280,7 @@ typedef struct {
     bool TOUCH_WITH_HOME_BUTTON;
 
     bool BSP_BUTTON_EN;
-    adc1_channel_t BUTTON_ADC_CHAN; // only use for adc button
+    int BUTTON_ADC_CHAN; // only use for adc button
     const board_button_t *BUTTON_TAB;
     uint8_t BUTTON_TAB_LEN;
 
