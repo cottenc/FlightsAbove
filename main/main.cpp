@@ -102,6 +102,8 @@ lv_obj_t* g_nearestMeta = nullptr;
 lv_obj_t* g_nearestType = nullptr;
 lv_obj_t* g_nearestLogoFrame = nullptr;
 lv_obj_t* g_nearestLogo = nullptr;
+lv_obj_t* g_nearestPlaneShadow = nullptr;
+lv_obj_t* g_nearestPlaneMarker = nullptr;
 lv_obj_t* g_rangeLabel = nullptr;
 lv_obj_t* g_outerRangeLabel = nullptr;
 lv_obj_t* g_outerRangeShadow = nullptr;
@@ -549,13 +551,13 @@ void set_nearest_logo_visible(bool visible) {
         lv_obj_set_pos(g_nearestCallsign, 76, 0);
         lv_obj_set_width(g_nearestCallsign, 180);
         lv_obj_set_pos(g_nearestMeta, 76, 36);
-        lv_obj_set_width(g_nearestMeta, 344);
+        lv_obj_set_width(g_nearestMeta, 292);
     } else {
         lv_obj_add_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(g_nearestCallsign, 0, 0);
         lv_obj_set_width(g_nearestCallsign, 210);
         lv_obj_set_pos(g_nearestMeta, 0, 36);
-        lv_obj_set_width(g_nearestMeta, 410);
+        lv_obj_set_width(g_nearestMeta, 364);
     }
 }
 
@@ -817,8 +819,8 @@ void build_ui() {
         lv_obj_move_foreground(g_planeMarkers[i]);
     }
 
-    const int rangeLabelX = kRadarWidth / 2 + 10;
-    const int rangeLabelY = kRadarHeight / 2 - kRadarRadius + 2;
+    const int rangeLabelX = kRadarWidth / 2 + kRadarRadius - 44;
+    const int rangeLabelY = kRadarHeight / 2 - 12;
     g_outerRangeShadow = make_label(g_radar, &lv_font_montserrat_20, 0x020403);
     lv_obj_set_size(g_outerRangeShadow, 44, 24);
     lv_obj_set_style_text_align(g_outerRangeShadow, LV_TEXT_ALIGN_CENTER, 0);
@@ -861,16 +863,34 @@ void build_ui() {
     lv_obj_set_pos(g_nearestCallsign, 0, 0);
 
     g_nearestType = make_label(nearest, &lv_font_montserrat_14, cfg::kColorAmber);
-    lv_obj_set_width(g_nearestType, 190);
+    lv_obj_set_width(g_nearestType, 140);
     lv_label_set_long_mode(g_nearestType, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestType, "--");
-    lv_obj_align(g_nearestType, LV_ALIGN_TOP_RIGHT, 0, 4);
+    lv_obj_align(g_nearestType, LV_ALIGN_TOP_RIGHT, -52, 4);
 
     g_nearestMeta = make_label(nearest, &lv_font_montserrat_14, cfg::kColorCyan);
-    lv_obj_set_width(g_nearestMeta, 410);
+    lv_obj_set_width(g_nearestMeta, 364);
     lv_label_set_long_mode(g_nearestMeta, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestMeta, "Waiting for ADS-B data");
     lv_obj_set_pos(g_nearestMeta, 0, 36);
+
+    g_nearestPlaneShadow = lv_img_create(nearest);
+    lv_img_set_src(g_nearestPlaneShadow, &flightsabove_icon_unknown);
+    lv_img_set_pivot(g_nearestPlaneShadow, kAircraftIconCellPx / 2, kAircraftIconCellPx / 2);
+    lv_img_set_zoom(g_nearestPlaneShadow, kPlaneIconStrokeZoom);
+    lv_obj_set_style_img_recolor(g_nearestPlaneShadow, lv_color_hex(0x020403), 0);
+    lv_obj_set_style_img_recolor_opa(g_nearestPlaneShadow, LV_OPA_COVER, 0);
+    lv_obj_set_style_img_opa(g_nearestPlaneShadow, LV_OPA_COVER, 0);
+    lv_obj_add_flag(g_nearestPlaneShadow, LV_OBJ_FLAG_HIDDEN);
+
+    g_nearestPlaneMarker = lv_img_create(nearest);
+    lv_img_set_src(g_nearestPlaneMarker, &flightsabove_icon_unknown);
+    lv_img_set_pivot(g_nearestPlaneMarker, kAircraftIconCellPx / 2, kAircraftIconCellPx / 2);
+    lv_img_set_zoom(g_nearestPlaneMarker, kPlaneIconZoom);
+    lv_obj_set_style_img_recolor(g_nearestPlaneMarker, lv_color_hex(cfg::kColorCyan), 0);
+    lv_obj_set_style_img_recolor_opa(g_nearestPlaneMarker, LV_OPA_COVER, 0);
+    lv_obj_set_style_img_opa(g_nearestPlaneMarker, LV_OPA_COVER, 0);
+    lv_obj_add_flag(g_nearestPlaneMarker, LV_OBJ_FLAG_HIDDEN);
 
     g_statusLabel = make_label(scr, &lv_font_montserrat_14, cfg::kColorMuted);
     lv_label_set_text(g_statusLabel, "HTTP ADS-B | UART fallback");
@@ -931,6 +951,8 @@ void refresh_ui(lv_timer_t*) {
         lv_label_set_text(g_nearestCallsign, "--");
         lv_label_set_text(g_nearestType, "--");
         lv_label_set_text(g_nearestMeta, "Waiting for ADS-B data");
+        lv_obj_add_flag(g_nearestPlaneShadow, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_nearestPlaneMarker, LV_OBJ_FLAG_HIDDEN);
         snprintf(buffer, sizeof(buffer), "AUTO MAX %u MI",
                  static_cast<unsigned>(settings.getRadarRangeMiles()));
         lv_label_set_text(g_rangeLabel, buffer);
@@ -999,6 +1021,18 @@ void refresh_ui(lv_timer_t*) {
     set_nearest_logo_visible(showLogo);
     lv_label_set_text(g_nearestCallsign, label_for_aircraft(nearest).c_str());
     lv_label_set_text(g_nearestType, type_for_aircraft(nearest).c_str());
+    const lv_img_dsc_t* nearestDescriptor = icon_descriptor(icon_for_aircraft(nearest));
+    const int nearestHeading = nearest.hasTrack ? nearest.trackDeg : nearest.bearingDeg;
+    const lv_point_t nearestIconCenter = {390, 24};
+    position_plane_icon(g_nearestPlaneShadow, nearestIconCenter, nearestHeading,
+                        nearestDescriptor, kPlaneIconStrokeZoom);
+    lv_obj_clear_flag(g_nearestPlaneShadow, LV_OBJ_FLAG_HIDDEN);
+    position_plane_icon(g_nearestPlaneMarker, nearestIconCenter, nearestHeading,
+                        nearestDescriptor, kPlaneIconZoom);
+    lv_obj_set_style_img_recolor(g_nearestPlaneMarker, lv_color_hex(color_for_aircraft(nearest)), 0);
+    lv_obj_clear_flag(g_nearestPlaneMarker, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(g_nearestPlaneShadow);
+    lv_obj_move_foreground(g_nearestPlaneMarker);
     const std::string metaPrefix = nearest.hasRoute && !nearest.route.empty()
         ? nearest.route + "  "
         : "";
