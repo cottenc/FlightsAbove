@@ -87,6 +87,27 @@ idf.py -p /dev/cu.usbserial-* flash monitor
 The firmware is intentionally kept as a clean ESP-IDF project. It does not use
 Arduino, `arduino-esp32`, or Arduino compatibility components.
 
+## Marker Attribution
+
+Aircraft marker families in the radar display are compact LVGL line templates
+adapted from tar1090's GPLv2-or-later marker set:
+https://github.com/wiedehopf/tar1090
+
+## Static Basemap
+
+The radar basemap is a generated, flash-resident LVGL RGB565 image at
+`main/basemap_default.cpp`. It is aligned to the default map center
+`47.68571, -122.31595` and default maximum range of 150 miles. Regenerate it
+after changing those defaults:
+
+```sh
+python3 -m pip install Pillow
+python3 tools/generate_basemap.py
+```
+
+The generator writes a visual check image to `docs/basemap_default_preview.png`.
+Map tiles are from OpenStreetMap contributors.
+
 ## Project Layout
 
 ```text

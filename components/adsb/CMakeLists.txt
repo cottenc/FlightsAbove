@@ -1,7 +1,12 @@
 idf_component_register(
     SRCS
+        "aircraft.cpp"
         "aircraft_store.cpp"
+        "readsb_json_parser.cpp"
+        "route_cache.cpp"
         "sbs_parser.cpp"
     INCLUDE_DIRS
         "include"
+    REQUIRES
+        cjson
 )

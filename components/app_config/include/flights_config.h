@@ -21,13 +21,18 @@ constexpr int kAdsbBaudRate = 9600;
 constexpr int kAdsbRxBufferBytes = 4096;
 constexpr int kAdsbLineMax = 240;
 
-constexpr double kDefaultReceiverLatitude = 37.62131;
-constexpr double kDefaultReceiverLongitude = -122.37896;
+constexpr const char* kDefaultFeederUrl = "http://cotten-2.l.adsb.im:8080/data/aircraft.json";
+
+constexpr double kDefaultReceiverLatitude = 47.68571;
+constexpr double kDefaultReceiverLongitude = -122.31595;
 constexpr double kReceiverLatitude = kDefaultReceiverLatitude;
 constexpr double kReceiverLongitude = kDefaultReceiverLongitude;
 
 constexpr int64_t kAircraftStaleMs = 120000;
 constexpr uint32_t kUiRefreshMs = 500;
+constexpr uint16_t kDefaultRadarRangeMiles = 150;
+constexpr uint16_t kMinRadarRangeMiles = 5;
+constexpr uint16_t kMaxRadarRangeMiles = 500;
 
 constexpr uint32_t kColorBackground = 0x07100D;
 constexpr uint32_t kColorPanel = 0x10211C;

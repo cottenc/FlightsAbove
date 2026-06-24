@@ -28,6 +28,8 @@ class AircraftStore {
     int findByIcao(const std::string& icao) const;
     int findSlot(int64_t nowMs) const;
     double distanceNm(double lat1, double lon1, double lat2, double lon2) const;
+    double bearingDeg(double lat1, double lon1, double lat2, double lon2) const;
+    static void pushTrace(Aircraft& aircraft);
     static void sortByDistance(Aircraft* aircraft, size_t count);
 };
 

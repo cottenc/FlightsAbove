@@ -280,9 +280,16 @@ esp_err_t handle_status(httpd_req_t* req) {
     json += "\"setup_ip\":\"" + json_escape(snap.setupIp) + "\",";
     json += "\"setup_url\":\"" + json_escape(snap.setupUrl) + "\",";
     json += "\"signal_dbm\":" + std::to_string(snap.rssi) + ",";
-    json += "\"receiver_latitude\":" + std::to_string(settings.getReceiverLatitude()) + ",";
-    json += "\"receiver_longitude\":" + std::to_string(settings.getReceiverLongitude()) + ",";
+    const double mapLat = settings.getReceiverLatitude();
+    const double mapLon = settings.getReceiverLongitude();
+    json += "\"map_center_latitude\":" + std::to_string(mapLat) + ",";
+    json += "\"map_center_longitude\":" + std::to_string(mapLon) + ",";
+    json += "\"receiver_latitude\":" + std::to_string(mapLat) + ",";
+    json += "\"receiver_longitude\":" + std::to_string(mapLon) + ",";
     json += "\"display_sleep_min\":" + std::to_string(settings.getDisplaySleepMin()) + ",";
+    json += "\"radar_range_miles\":" + std::to_string(settings.getRadarRangeMiles()) + ",";
+    const std::string feederUrl = settings.getFeederUrl();
+    json += "\"feeder_url\":\"" + json_escape(feederUrl.c_str()) + "\",";
     json += "\"free_heap\":" + std::to_string(heap_caps_get_free_size(MALLOC_CAP_DEFAULT)) + ",";
     json += "\"ota_running\":" + std::string(snap.otaRunning ? "true" : "false");
     json += "}";
@@ -323,12 +330,28 @@ esp_err_t handle_save_receiver(httpd_req_t* req) {
     const double lat = std::strtod(form_value(body, "lat").c_str(), nullptr);
     const double lon = std::strtod(form_value(body, "lon").c_str(), nullptr);
     const int sleep = std::atoi(form_value(body, "sleep").c_str());
+    const int range = std::atoi(form_value(body, "range").c_str());
     if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
         return send_text(req, 400, "text/plain", "Receiver latitude or longitude is out of range.");
+    }
+    if (range < cfg::kMinRadarRangeMiles || range > cfg::kMaxRadarRangeMiles) {
+        return send_text(req, 400, "text/plain", "Radar range is out of range.");
     }
 
     settings.setReceiverLocation(lat, lon);
     settings.setDisplaySleepMin(static_cast<uint16_t>(sleep < 0 ? 0 : sleep));
+    settings.setRadarRangeMiles(static_cast<uint16_t>(range));
+    return redirect_root(req);
+}
+
+esp_err_t handle_save_feeder(httpd_req_t* req) {
+    const std::string body = read_body(req, 2048);
+    std::string url = form_value(body, "url");
+    trim(url);
+    if (url.rfind("http://", 0) != 0) {
+        return send_text(req, 400, "text/plain", "Feeder URL must start with http://.");
+    }
+    settings.setFeederUrl(url);
     return redirect_root(req);
 }
 
@@ -428,6 +451,7 @@ void start_server() {
     register_uri("/status", HTTP_GET, handle_status);
     register_uri("/save-wifi", HTTP_POST, handle_save_wifi);
     register_uri("/save-receiver", HTTP_POST, handle_save_receiver);
+    register_uri("/save-feeder", HTTP_POST, handle_save_feeder);
     register_uri("/ota", HTTP_POST, handle_ota);
     register_uri("/restart", HTTP_POST, handle_restart);
     register_uri("/factory-reset", HTTP_POST, handle_factory_reset);

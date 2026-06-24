@@ -46,6 +46,8 @@ std::string renderPage(const std::string& basePath) {
     const std::string lat = formatDouble(settings.getReceiverLatitude());
     const std::string lon = formatDouble(settings.getReceiverLongitude());
     const std::string sleep = std::to_string(settings.getDisplaySleepMin());
+    const std::string radarRange = std::to_string(settings.getRadarRangeMiles());
+    const std::string feederUrl = htmlEscape(settings.getFeederUrl());
     const std::string passPlaceholder = pass.empty() ? "Required" : "Leave blank to keep current password";
 
     return std::string(
@@ -64,18 +66,23 @@ std::string renderPage(const std::string& basePath) {
         ".grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.status{white-space:pre-wrap;color:var(--cyan);"
         "background:#07120f;border-radius:8px;padding:12px;min-height:96px}.hint{color:var(--muted);font-size:13px}"
         "@media(max-width:640px){.grid{grid-template-columns:1fr}}</style></head><body>"
-        "<h1>FlightsAbove Setup</h1><div class=sub>Configure Wi-Fi, receiver location, and firmware updates.</div>"
+        "<h1>FlightsAbove Setup</h1><div class=sub>Configure Wi-Fi, map center, radar range, and firmware updates.</div>"
         "<section><h2>Status</h2><pre id=status class=status>Loading...</pre>"
         "<button class=secondary onclick=refreshStatus()>Refresh</button></section>"
         "<section><h2>Wi-Fi</h2><form method=post action='" + basePath + "/save-wifi'>"
         "<label>Network name</label><input name=ssid autocomplete='off' required value='" + ssid + "'>"
         "<label>Password</label><input name=pass type=password autocomplete=new-password placeholder='" + passPlaceholder + "'>"
         "<button>Save Wi-Fi</button></form></section>"
-        "<section><h2>Receiver</h2><form method=post action='" + basePath + "/save-receiver'>"
+        "<section><h2>Map Center</h2><form method=post action='" + basePath + "/save-receiver'>"
         "<div class=grid><div><label>Latitude</label><input name=lat type=number step=0.000001 min=-90 max=90 value='" + lat + "'></div>"
         "<div><label>Longitude</label><input name=lon type=number step=0.000001 min=-180 max=180 value='" + lon + "'></div></div>"
+        "<label>Maximum radar range in miles</label><input name=range type=number min='" + std::to_string(cfg::kMinRadarRangeMiles) +
+        "' max='" + std::to_string(cfg::kMaxRadarRangeMiles) + "' value='" + radarRange + "'>"
         "<label>Turn display off after minutes (0 disables)</label><input name=sleep type=number min=0 max=120 value='" + sleep + "'>"
-        "<button>Save receiver settings</button></form><p class=hint>Location is used to sort aircraft by distance.</p></section>"
+        "<button>Save map settings</button></form><p class=hint>The map autosizes to current aircraft up to this maximum range.</p></section>"
+        "<section><h2>Feeder</h2><form method=post action='" + basePath + "/save-feeder'>"
+        "<label>Aircraft JSON URL</label><input name=url type=url inputmode=url required value='" + feederUrl + "'>"
+        "<button>Save feeder</button></form><p class=hint>Use the local readsb/tar1090 aircraft JSON endpoint.</p></section>"
         "<section><h2>OTA Firmware Update</h2><input id=fw type=file accept='.bin,application/octet-stream' required>"
         "<button onclick=uploadFirmware()>Upload firmware</button><pre id=ota class=status></pre>"
         "<p class=hint>Upload the app binary from <code>build/flightsabove.bin</code>. "
