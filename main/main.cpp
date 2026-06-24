@@ -48,7 +48,7 @@ using adsb::SbsParser;
 namespace {
 
 constexpr size_t kVisibleAircraft = 16;
-constexpr size_t kPlaneIconPointCapacity = 16;
+constexpr size_t kPlaneIconPointCapacity = 18;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
@@ -598,12 +598,21 @@ size_t plane_icon_points(const Aircraft& aircraft, const lv_point_t& center, int
     const double angle = headingDeg * kDegToRad;
     const double sinA = std::sin(angle);
     const double cosA = std::cos(angle);
+    if (points == nullptr || capacity == 0) {
+        return 0;
+    }
+
     const size_t shapeCount = std::min(capacity, templateCount);
     for (size_t i = 0; i < shapeCount; ++i) {
         const double x = shape[i].x;
         const double y = shape[i].y;
         points[i].x = static_cast<lv_coord_t>(center.x + x * cosA - y * sinA);
         points[i].y = static_cast<lv_coord_t>(center.y + x * sinA + y * cosA);
+    }
+    if (shapeCount == templateCount && shapeCount < capacity &&
+        (shape[0].x != shape[templateCount - 1].x || shape[0].y != shape[templateCount - 1].y)) {
+        points[shapeCount] = points[0];
+        return shapeCount + 1;
     }
     return shapeCount;
 }
