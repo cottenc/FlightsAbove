@@ -61,6 +61,7 @@ constexpr uint16_t kNearestExactPlaneIconStrokeZoom = 206;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
+constexpr int kRadarDiameter = kRadarRadius * 2;
 constexpr double kLocalBasemapRangeMiles = 10.0;
 constexpr double kCloseBasemapRangeMiles = 25.0;
 constexpr double kMidBasemapRangeMiles = 50.0;
@@ -836,18 +837,21 @@ void build_ui() {
         lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(ring, 1, 0);
         lv_obj_set_style_border_color(ring, lv_color_hex(i == 3 ? cfg::kColorCyan : 0x265688), 0);
+        lv_obj_set_style_border_opa(ring, i == 3 ? LV_OPA_COVER : LV_OPA_30, 0);
         lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
     }
 
     lv_obj_t* crossH = lv_obj_create(g_radar);
-    lv_obj_set_size(crossH, kRadarWidth - 28, 1);
+    lv_obj_set_size(crossH, kRadarDiameter, 1);
     lv_obj_align(crossH, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(crossH, lv_color_hex(0x1d3d6f), 0);
+    lv_obj_set_style_bg_opa(crossH, LV_OPA_30, 0);
     lv_obj_set_style_border_width(crossH, 0, 0);
     lv_obj_t* crossV = lv_obj_create(g_radar);
-    lv_obj_set_size(crossV, 1, kRadarHeight - 28);
+    lv_obj_set_size(crossV, 1, kRadarDiameter);
     lv_obj_align(crossV, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(crossV, lv_color_hex(0x1d3d6f), 0);
+    lv_obj_set_style_bg_opa(crossV, LV_OPA_30, 0);
     lv_obj_set_style_border_width(crossV, 0, 0);
 
     lv_obj_t* center = lv_obj_create(g_radar);
