@@ -1,5 +1,7 @@
 #pragma once
 
+#include "esp_http_server.h"
+
 #include <stdint.h>
 
 namespace device_network {
@@ -18,5 +20,6 @@ struct Snapshot {
 void begin();
 Snapshot snapshot();
 void requestRestart(uint32_t delayMs = 500);
+esp_err_t registerGetHandler(const char* uri, esp_err_t (*handler)(httpd_req_t*));
 
 }  // namespace device_network

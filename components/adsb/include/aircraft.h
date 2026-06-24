@@ -66,6 +66,7 @@ struct AircraftUpdate {
 
 std::string normalizeCallsign(const std::string& callsign);
 std::string airlineIcaoFromCallsign(const std::string& callsign);
+std::string iataTypeFromIcaoType(const std::string& typeCode);
 std::string trimCopy(const std::string& value);
 void uppercaseInPlace(std::string& value);
 

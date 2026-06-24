@@ -1,6 +1,7 @@
 #include "aircraft.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 
 namespace adsb {
@@ -65,6 +66,49 @@ std::string airlineIcaoFromCallsign(const std::string& callsign) {
         return "";
     }
     return normalized.substr(0, 3);
+}
+
+std::string iataTypeFromIcaoType(const std::string& typeCode) {
+    struct TypeMap {
+        const char* icao;
+        const char* iata;
+    };
+    static constexpr std::array<TypeMap, 58> kTypes = {{
+        {"A318", "318"}, {"A319", "319"}, {"A320", "320"}, {"A321", "321"},
+        {"A20N", "32N"}, {"A21N", "32Q"}, {"A306", "AB6"}, {"A310", "310"},
+        {"A332", "332"}, {"A333", "333"}, {"A338", "338"}, {"A339", "339"},
+        {"A342", "342"}, {"A343", "343"}, {"A345", "345"}, {"A346", "346"},
+        {"A359", "359"}, {"A35K", "351"}, {"A388", "388"},
+        {"B712", "717"}, {"B722", "722"}, {"B732", "732"}, {"B733", "733"},
+        {"B734", "734"}, {"B735", "735"}, {"B736", "736"}, {"B737", "737"},
+        {"B738", "738"}, {"B739", "739"}, {"B37M", "7M7"}, {"B38M", "7M8"},
+        {"B39M", "7M9"}, {"B3XM", "7MJ"}, {"B752", "752"}, {"B753", "753"},
+        {"B762", "762"}, {"B763", "763"}, {"B764", "764"}, {"B772", "772"},
+        {"B77L", "77L"}, {"B77W", "77W"}, {"B788", "788"}, {"B789", "789"},
+        {"B78X", "781"}, {"B744", "744"}, {"B748", "748"},
+        {"C25A", "CNJ"}, {"C25B", "CNJ"}, {"C25C", "CNJ"}, {"C680", "CNJ"},
+        {"CRJ2", "CR2"}, {"CRJ7", "CR7"}, {"CRJ9", "CR9"}, {"E170", "E70"},
+        {"E190", "E90"}, {"E75L", "E75"}, {"E75S", "E75"}, {"DH8D", "DH4"},
+    }};
+
+    std::string normalized = trimCopy(typeCode);
+    uppercaseInPlace(normalized);
+    for (const TypeMap& item : kTypes) {
+        if (normalized == item.icao) {
+            return item.iata;
+        }
+    }
+    if (normalized.size() == 3) {
+        bool alphaNumeric = true;
+        for (char ch : normalized) {
+            alphaNumeric = alphaNumeric &&
+                           ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9'));
+        }
+        if (alphaNumeric) {
+            return normalized;
+        }
+    }
+    return "";
 }
 
 }  // namespace adsb

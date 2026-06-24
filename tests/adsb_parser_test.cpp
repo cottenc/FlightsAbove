@@ -39,6 +39,11 @@ int main() {
     assert(adsb::airlineIcaoFromCallsign(" UAL0007 ") == "UAL");
     assert(adsb::airlineIcaoFromCallsign("N12345").empty());
     assert(adsb::airlineIcaoFromCallsign("AS328").empty());
+    assert(adsb::iataTypeFromIcaoType("B39M") == "7M9");
+    assert(adsb::iataTypeFromIcaoType(" e75l ") == "E75");
+    assert(adsb::iataTypeFromIcaoType("CRJ9") == "CR9");
+    assert(adsb::iataTypeFromIcaoType("73H") == "73H");
+    assert(adsb::iataTypeFromIcaoType("B1234").empty());
 
     adsb::AircraftStore store(47.68571, -122.31595, 120000);
     updates[0].distanceNm = 598.0;

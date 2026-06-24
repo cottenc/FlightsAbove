@@ -467,6 +467,7 @@ void start_server() {
     config.server_port = cfg::kSetupPortalPort;
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.stack_size = 8192;
+    config.max_uri_handlers = 16;
 
     ESP_ERROR_CHECK(httpd_start(&s_server, &config));
     register_uri("/", HTTP_GET, handle_root);
@@ -548,6 +549,17 @@ Snapshot snapshot() {
 
 void requestRestart(uint32_t delayMs) {
     s_restartAtMs = now_ms() + delayMs;
+}
+
+esp_err_t registerGetHandler(const char* uri, esp_err_t (*handler)(httpd_req_t*)) {
+    if (s_server == nullptr || uri == nullptr || handler == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    httpd_uri_t cfg = {};
+    cfg.uri = uri;
+    cfg.method = HTTP_GET;
+    cfg.handler = handler;
+    return httpd_register_uri_handler(s_server, &cfg);
 }
 
 }  // namespace device_network
