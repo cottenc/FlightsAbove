@@ -49,9 +49,11 @@ constexpr size_t kPlaneIconPointCapacity = 16;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
+constexpr double kLocalBasemapRangeMiles = 10.0;
 constexpr double kCloseBasemapRangeMiles = 25.0;
 constexpr double kMidBasemapRangeMiles = 50.0;
 constexpr double kLongBasemapRangeMiles = 150.0;
+constexpr double kLocalBasemapMaxRangeMiles = 10.0;
 constexpr double kCloseBasemapMaxRangeMiles = 25.0;
 constexpr double kMidBasemapMaxRangeMiles = 50.0;
 constexpr size_t kHttpAircraftCapacity = 32;
@@ -359,15 +361,20 @@ void update_basemap_zoom(double rangeMiles) {
         return;
     }
 
-    const bool useCloseBasemap = rangeMiles <= kCloseBasemapMaxRangeMiles;
+    const bool useLocalBasemap = rangeMiles <= kLocalBasemapMaxRangeMiles;
+    const bool useCloseBasemap = !useLocalBasemap && rangeMiles <= kCloseBasemapMaxRangeMiles;
     const bool useMidBasemap = !useCloseBasemap && rangeMiles <= kMidBasemapMaxRangeMiles;
-    const double sourceRangeMiles = useCloseBasemap
-        ? kCloseBasemapRangeMiles
-        : (useMidBasemap ? kMidBasemapRangeMiles : kLongBasemapRangeMiles);
+    const double sourceRangeMiles = useLocalBasemap
+        ? kLocalBasemapRangeMiles
+        : (useCloseBasemap
+            ? kCloseBasemapRangeMiles
+            : (useMidBasemap ? kMidBasemapRangeMiles : kLongBasemapRangeMiles));
     if (sourceRangeMiles != g_basemapSourceRangeMiles) {
-        lv_img_set_src(g_basemap, useCloseBasemap
-            ? &flightsabove_basemap_close
-            : (useMidBasemap ? &flightsabove_basemap_mid : &flightsabove_basemap_long));
+        lv_img_set_src(g_basemap, useLocalBasemap
+            ? &flightsabove_basemap_local
+            : (useCloseBasemap
+                ? &flightsabove_basemap_close
+                : (useMidBasemap ? &flightsabove_basemap_mid : &flightsabove_basemap_long)));
         g_basemapSourceRangeMiles = sourceRangeMiles;
     }
 

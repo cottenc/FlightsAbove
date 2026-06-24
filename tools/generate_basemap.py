@@ -22,6 +22,7 @@ DEFAULT_LON = -122.31595
 DEFAULT_LONG_RANGE_MILES = 150.0
 DEFAULT_MID_RANGE_MILES = 50.0
 DEFAULT_CLOSE_RANGE_MILES = 25.0
+DEFAULT_LOCAL_RANGE_MILES = 10.0
 WIDTH = 432
 HEIGHT = 318
 RADAR_RADIUS = 146
@@ -190,10 +191,12 @@ def main() -> None:
     parser.add_argument("--long-range-miles", type=float, default=DEFAULT_LONG_RANGE_MILES)
     parser.add_argument("--mid-range-miles", type=float, default=DEFAULT_MID_RANGE_MILES)
     parser.add_argument("--close-range-miles", type=float, default=DEFAULT_CLOSE_RANGE_MILES)
+    parser.add_argument("--local-range-miles", type=float, default=DEFAULT_LOCAL_RANGE_MILES)
     parser.add_argument("--cache-dir", type=pathlib.Path, default=pathlib.Path(".tile-cache"))
     parser.add_argument("--preview", type=pathlib.Path, default=pathlib.Path("docs/basemap_default_preview.png"))
     parser.add_argument("--mid-preview", type=pathlib.Path, default=pathlib.Path("docs/basemap_mid_preview.png"))
     parser.add_argument("--close-preview", type=pathlib.Path, default=pathlib.Path("docs/basemap_close_preview.png"))
+    parser.add_argument("--local-preview", type=pathlib.Path, default=pathlib.Path("docs/basemap_local_preview.png"))
     parser.add_argument("--header", type=pathlib.Path, default=pathlib.Path("main/basemap_default.h"))
     parser.add_argument("--source", type=pathlib.Path, default=pathlib.Path("main/basemap_default.cpp"))
     args = parser.parse_args()
@@ -201,25 +204,31 @@ def main() -> None:
     long_image = render_basemap(args.lat, args.lon, args.long_range_miles, args.cache_dir)
     mid_image = render_basemap(args.lat, args.lon, args.mid_range_miles, args.cache_dir)
     close_image = render_basemap(args.lat, args.lon, args.close_range_miles, args.cache_dir)
+    local_image = render_basemap(args.lat, args.lon, args.local_range_miles, args.cache_dir)
     args.preview.parent.mkdir(parents=True, exist_ok=True)
     args.mid_preview.parent.mkdir(parents=True, exist_ok=True)
     args.close_preview.parent.mkdir(parents=True, exist_ok=True)
+    args.local_preview.parent.mkdir(parents=True, exist_ok=True)
     long_image.save(args.preview)
     mid_image.save(args.mid_preview)
     close_image.save(args.close_preview)
+    local_image.save(args.local_preview)
     write_cpp(
         [
             ("flightsabove_basemap_long", long_image),
             ("flightsabove_basemap_mid", mid_image),
             ("flightsabove_basemap_close", close_image),
+            ("flightsabove_basemap_local", local_image),
         ],
         args.header,
         args.source,
     )
     print(
-        f"Generated {args.source}, {args.preview}, {args.mid_preview}, and {args.close_preview} "
+        f"Generated {args.source}, {args.preview}, {args.mid_preview}, "
+        f"{args.close_preview}, and {args.local_preview} "
         f"for {args.lat:.5f},{args.lon:.5f} at "
-        f"{args.close_range_miles:.0f}/{args.mid_range_miles:.0f}/{args.long_range_miles:.0f} mi"
+        f"{args.local_range_miles:.0f}/{args.close_range_miles:.0f}/"
+        f"{args.mid_range_miles:.0f}/{args.long_range_miles:.0f} mi"
     )
 
 

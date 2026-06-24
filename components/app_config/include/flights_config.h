@@ -30,7 +30,7 @@ constexpr double kReceiverLongitude = kDefaultReceiverLongitude;
 
 constexpr int64_t kAircraftStaleMs = 120000;
 constexpr uint32_t kUiRefreshMs = 500;
-constexpr uint16_t kDefaultRadarRangeMiles = 150;
+constexpr uint16_t kDefaultRadarRangeMiles = 10;
 constexpr uint16_t kMinRadarRangeMiles = 5;
 constexpr uint16_t kMaxRadarRangeMiles = 500;
 
