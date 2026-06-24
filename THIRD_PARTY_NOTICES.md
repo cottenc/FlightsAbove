@@ -8,6 +8,7 @@ project:
 - Source: https://github.com/wiedehopf/tar1090
 - Asset: `html/images/sprites.png`
 - License: GPLv2-or-later
-- Use: aircraft marker sprites
+- Use: aircraft marker sprites and altitude color ramp
 
-The generated LVGL sprite arrays live in `main/aircraft_icons.cpp`.
+The generated LVGL sprite arrays live in `main/aircraft_icons.cpp`. The
+altitude-based marker color mapping is ported in `main/main.cpp`.

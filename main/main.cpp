@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <dirent.h>
+#include <iterator>
 #include <stdio.h>
 #include <string>
 #include <string.h>
@@ -315,15 +316,149 @@ lv_obj_t* make_label(lv_obj_t* parent, const lv_font_t* font, uint32_t color) {
     return label;
 }
 
+struct AltitudeColorPoint {
+    double input;
+    double value;
+};
+
+struct HslColor {
+    double h;
+    double s;
+    double l;
+};
+
+double interpolate_value(const AltitudeColorPoint* points, size_t count, double input) {
+    double value = points[0].value;
+    for (size_t offset = count; offset > 0; --offset) {
+        const size_t i = offset - 1;
+        if (input > points[i].input) {
+            if (i == count - 1) {
+                value = points[i].value;
+            } else {
+                value = points[i].value +
+                        (points[i + 1].value - points[i].value) *
+                        (input - points[i].input) /
+                        (points[i + 1].input - points[i].input);
+            }
+            break;
+        }
+    }
+    return value;
+}
+
+uint8_t color_channel_from_unit(double value) {
+    return static_cast<uint8_t>(std::clamp<int>(static_cast<int>(std::round(value * 255.0)), 0, 255));
+}
+
+double hue_to_rgb(double p, double q, double t) {
+    if (t < 0.0) {
+        t += 1.0;
+    }
+    if (t > 1.0) {
+        t -= 1.0;
+    }
+    if (t < 1.0 / 6.0) {
+        return p + (q - p) * 6.0 * t;
+    }
+    if (t < 1.0 / 2.0) {
+        return q;
+    }
+    if (t < 2.0 / 3.0) {
+        return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+    }
+    return p;
+}
+
+uint32_t hsl_to_rgb_hex(HslColor color) {
+    double h = color.h / 360.0;
+    double s = color.s * 0.01;
+    double l = color.l * 0.01;
+    double r = l;
+    double g = l;
+    double b = l;
+
+    if (s > 0.0) {
+        const double q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+        const double p = 2.0 * l - q;
+        r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+        g = hue_to_rgb(p, q, h);
+        b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+    }
+
+    return (static_cast<uint32_t>(color_channel_from_unit(r)) << 16) |
+           (static_cast<uint32_t>(color_channel_from_unit(g)) << 8) |
+           static_cast<uint32_t>(color_channel_from_unit(b));
+}
+
+HslColor tar1090_altitude_color(const Aircraft& aircraft) {
+    static constexpr AltitudeColorPoint kHueByAltitude[] = {
+        {0, 20},
+        {2000, 32.5},
+        {4000, 43},
+        {6000, 54},
+        {8000, 72},
+        {9000, 85},
+        {11000, 140},
+        {40000, 300},
+        {51000, 360},
+    };
+    static constexpr AltitudeColorPoint kLightnessByHue[] = {
+        {0, 53},
+        {20, 50},
+        {32, 54},
+        {40, 52},
+        {46, 51},
+        {50, 46},
+        {60, 43},
+        {80, 41},
+        {100, 41},
+        {120, 41},
+        {140, 41},
+        {160, 40},
+        {180, 40},
+        {190, 44},
+        {198, 50},
+        {200, 58},
+        {220, 58},
+        {240, 58},
+        {255, 55},
+        {266, 55},
+        {270, 58},
+        {280, 58},
+        {290, 47},
+        {300, 43},
+        {310, 48},
+        {320, 48},
+        {340, 52},
+        {360, 53},
+    };
+
+    if (aircraft.category == "C3" || aircraft.typeCode == "TWR") {
+        return {220, 0, 45};
+    }
+    if (!aircraft.hasAltitude) {
+        return {0, 0, 75};
+    }
+
+    const int roundTo = aircraft.altitudeFt < 8000 ? 50 : 500;
+    const double altitude = roundTo * std::round(static_cast<double>(aircraft.altitudeFt) / roundTo);
+    HslColor color = {
+        interpolate_value(kHueByAltitude, std::size(kHueByAltitude), altitude),
+        88,
+        0,
+    };
+    color.l = interpolate_value(kLightnessByHue, std::size(kLightnessByHue), color.h);
+    color.h = std::fmod(color.h, 360.0);
+    if (color.h < 0) {
+        color.h += 360.0;
+    }
+    color.s = std::clamp(color.s, 0.0, 95.0);
+    color.l = std::clamp(color.l, 0.0, 95.0);
+    return color;
+}
+
 uint32_t color_for_aircraft(const Aircraft& aircraft) {
-    if (aircraft.category == "A7" || aircraft.typeCode.rfind("H", 0) == 0 ||
-        aircraft.typeDescription.find("HELICOPTER") != std::string::npos) {
-        return cfg::kColorAmber;
-    }
-    if (aircraft.category == "A1" || aircraft.category == "A2") {
-        return cfg::kColorGreen;
-    }
-    return cfg::kColorCyan;
+    return hsl_to_rgb_hex(tar1090_altitude_color(aircraft));
 }
 
 std::string type_for_aircraft(const Aircraft& aircraft) {
