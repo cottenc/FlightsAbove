@@ -106,11 +106,23 @@ Arduino, `arduino-esp32`, or Arduino compatibility components.
 ## Marker Attribution
 
 Aircraft marker sprites in `main/aircraft_icons.cpp` are cropped and repacked
-from tar1090's `html/images/sprites.png` asset for LVGL:
+from tar1090's `html/images/sprites.png` asset for LVGL as the family fallback
+set:
 https://github.com/wiedehopf/tar1090/blob/master/html/images/sprites.png
 
 tar1090 is licensed under GPLv2-or-later:
 https://github.com/wiedehopf/tar1090
+
+The most common local aircraft types also have curated exact type-code sprites
+generated from RexKramer1/AircraftShapesSVG:
+https://github.com/RexKramer1/AircraftShapesSVG
+
+The curated set currently includes `B738`, `B38M`, `B739`, `A21N`, `A321`,
+`E75L`, `C172`, `B737`, `B39M`, `B763`, `A359`, `B789`, `B77L`, `B77W`, and
+`C68A`. AircraftShapesSVG does not currently include exact `E75L` or `C68A`
+SVG filenames, so `E75L` is mapped from the available `E170` shape and `C68A`
+is mapped from the available `C750` business-jet shape. AircraftShapesSVG is
+licensed under GPL-3.0.
 
 ## Static Basemap
 
