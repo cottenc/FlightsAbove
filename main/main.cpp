@@ -51,9 +51,11 @@ constexpr size_t kAircraftJsonMaxBytes = 32768;
 constexpr size_t kRouteJsonMaxBytes = 4096;
 constexpr size_t kLogoPngMaxBytes = 65536;
 constexpr int64_t kRouteLookupMinIntervalMs = 3500;
-constexpr int64_t kLogoLookupMinIntervalMs = 10000;
-constexpr int64_t kLogoMissingRetryMs = 15 * 60 * 1000;
-constexpr int64_t kLogoSuccessRefreshMs = 6 * 60 * 60 * 1000;
+constexpr int64_t kLogoLookupMinIntervalMs = 60 * 1000;
+constexpr int64_t kLogoMissingRetryMs = 24 * 60 * 60 * 1000;
+constexpr int64_t kLogoSuccessRefreshMs = 30LL * 24 * 60 * 60 * 1000;
+constexpr int64_t kLogoQuotaWindowMs = 24 * 60 * 60 * 1000;
+constexpr uint16_t kLogoDailyLookupLimit = 100;
 constexpr double kMilesPerNm = 1.150779448;
 constexpr double kNmPerMile = 0.868976242;
 constexpr const char* kRouteApiUrl = "http://adsb.im/api/0/routeset";
@@ -79,6 +81,7 @@ lv_obj_t* g_rangeLabel = nullptr;
 lv_obj_t* g_outerRangeLabel = nullptr;
 lv_obj_t* g_radar = nullptr;
 lv_obj_t* g_basemap = nullptr;
+lv_obj_t* g_planeShadows[kVisibleAircraft] = {};
 lv_obj_t* g_planeMarkers[kVisibleAircraft] = {};
 lv_obj_t* g_trackLines[kVisibleAircraft] = {};
 lv_point_t g_trackPoints[kVisibleAircraft][Aircraft::kTraceLength] = {};
@@ -552,6 +555,15 @@ void build_ui() {
     lv_img_set_zoom(g_basemap, 256);
     lv_obj_set_pos(g_basemap, 0, 0);
 
+    lv_obj_t* basemapScrim = lv_obj_create(g_radar);
+    lv_obj_set_size(basemapScrim, kRadarWidth, kRadarHeight);
+    lv_obj_set_pos(basemapScrim, 0, 0);
+    lv_obj_set_style_bg_color(basemapScrim, lv_color_hex(0x04100D), 0);
+    lv_obj_set_style_bg_opa(basemapScrim, LV_OPA_30, 0);
+    lv_obj_set_style_border_width(basemapScrim, 0, 0);
+    lv_obj_set_style_radius(basemapScrim, 0, 0);
+    lv_obj_clear_flag(basemapScrim, LV_OBJ_FLAG_SCROLLABLE);
+
     for (int i = 0; i < 4; ++i) {
         lv_obj_t* ring = lv_obj_create(g_radar);
         const int size = 76 + i * 72;
@@ -595,15 +607,24 @@ void build_ui() {
 
     for (size_t i = 0; i < kVisibleAircraft; ++i) {
         g_trackLines[i] = lv_line_create(g_radar);
-        lv_obj_set_style_line_width(g_trackLines[i], 2, 0);
+        lv_obj_set_style_line_width(g_trackLines[i], 3, 0);
         lv_obj_set_style_line_color(g_trackLines[i], lv_color_hex(0x5DE3F7), 0);
-        lv_obj_set_style_line_opa(g_trackLines[i], LV_OPA_50, 0);
+        lv_obj_set_style_line_opa(g_trackLines[i], LV_OPA_70, 0);
         lv_obj_add_flag(g_trackLines[i], LV_OBJ_FLAG_HIDDEN);
+
+        g_planeShadows[i] = lv_line_create(g_radar);
+        lv_obj_set_size(g_planeShadows[i], kRadarWidth, kRadarHeight);
+        lv_obj_set_style_line_width(g_planeShadows[i], 6, 0);
+        lv_obj_set_style_line_color(g_planeShadows[i], lv_color_hex(0x03100D), 0);
+        lv_obj_set_style_line_opa(g_planeShadows[i], LV_OPA_80, 0);
+        lv_obj_set_style_line_rounded(g_planeShadows[i], true, 0);
+        lv_obj_add_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
 
         g_planeMarkers[i] = lv_line_create(g_radar);
         lv_obj_set_size(g_planeMarkers[i], kRadarWidth, kRadarHeight);
-        lv_obj_set_style_line_width(g_planeMarkers[i], 2, 0);
+        lv_obj_set_style_line_width(g_planeMarkers[i], 3, 0);
         lv_obj_set_style_line_color(g_planeMarkers[i], lv_color_hex(cfg::kColorCyan), 0);
+        lv_obj_set_style_line_opa(g_planeMarkers[i], LV_OPA_COVER, 0);
         lv_obj_set_style_line_rounded(g_planeMarkers[i], true, 0);
         lv_obj_add_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
     }
@@ -704,6 +725,7 @@ void refresh_ui(lv_timer_t*) {
         update_outer_range_label(settings.getRadarRangeMiles());
         update_basemap_zoom(settings.getRadarRangeMiles());
         for (size_t i = 0; i < kVisibleAircraft; ++i) {
+            lv_obj_add_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(g_trackLines[i], LV_OBJ_FLAG_HIDDEN);
         }
@@ -722,6 +744,7 @@ void refresh_ui(lv_timer_t*) {
         if (i >= count || !g_visibleAircraft[i].hasBearing ||
             !(g_visibleAircraft[i].hasDistance || g_visibleAircraft[i].hasPosition) ||
             g_visibleAircraft[i].distanceNm > rangeNm) {
+            lv_obj_add_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(g_trackLines[i], LV_OBJ_FLAG_HIDDEN);
             continue;
@@ -733,6 +756,8 @@ void refresh_ui(lv_timer_t*) {
                                                     item.hasTrack ? item.trackDeg : item.bearingDeg,
                                                     g_planeIconPoints[i],
                                                     sizeof(g_planeIconPoints[i]) / sizeof(g_planeIconPoints[i][0]));
+        lv_line_set_points(g_planeShadows[i], g_planeIconPoints[i], pointCount);
+        lv_obj_clear_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
         lv_line_set_points(g_planeMarkers[i], g_planeIconPoints[i], pointCount);
         lv_obj_set_style_line_color(g_planeMarkers[i], lv_color_hex(color_for_aircraft(item)), 0);
         lv_obj_clear_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
@@ -1046,6 +1071,8 @@ std::string logo_url_for_airline_icao(const std::string& code) {
 
 void airline_logo_task(void*) {
     int64_t lastLookupMs = 0;
+    int64_t quotaWindowStartMs = now_ms();
+    uint16_t lookupsThisWindow = 0;
 
     for (;;) {
         const device_network::Snapshot network = device_network::snapshot();
@@ -1099,11 +1126,20 @@ void airline_logo_task(void*) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
+        if (now - quotaWindowStartMs >= kLogoQuotaWindowMs) {
+            quotaWindowStartMs = now;
+            lookupsThisWindow = 0;
+        }
+        if (lookupsThisWindow >= kLogoDailyLookupLimit) {
+            vTaskDelay(pdMS_TO_TICKS(60 * 60 * 1000));
+            continue;
+        }
 
         const std::string url = logo_url_for_airline_icao(code);
         std::string body;
         int status = 0;
         lastLookupMs = now_ms();
+        ++lookupsThisWindow;
         const esp_err_t err = http_get_with_header(url.c_str(), "x-api-key", apiKey.c_str(),
                                                    kLogoPngMaxBytes, body, &status);
         const int64_t responseNow = now_ms();
