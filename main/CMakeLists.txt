@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        adsb
+        driver
+        esp_timer
+        freertos
+        log
+        lvgl__lvgl
+        nvs_flash
+        platform
+        ui_layout
+)

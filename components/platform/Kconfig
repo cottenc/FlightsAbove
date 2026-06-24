@@ -1,0 +1,32 @@
+menu "FlightsAbove platform"
+
+choice FLIGHTSABOVE_PLATFORM
+    prompt "Hardware platform"
+    default FLIGHTSABOVE_PLATFORM_SENSECAP
+    help
+        Select the hardware adapter used by the UI runtime. SenseCAP remains
+        the tested default path.
+
+config FLIGHTSABOVE_PLATFORM_SENSECAP
+    bool "SenseCAP Indicator D1Pro"
+    help
+        Seeed SenseCAP Indicator D1Pro with the current RGB framebuffer and
+        FT5x06 touch path.
+
+config FLIGHTSABOVE_PLATFORM_LILYGO_T_DISPLAY_S3
+    bool "LilyGo T-Display-S3 (reserved)"
+    help
+        Reserved target for the compact-wide LilyGo T-Display-S3 family.
+        Selecting this target intentionally fails until the display, touch,
+        backlight, and flush adapter are implemented.
+
+config FLIGHTSABOVE_PLATFORM_ROUND_360
+    bool "Generic round ESP32-S3 360x360 (reserved)"
+    help
+        Reserved target for the planned round display class. Selecting this
+        target intentionally fails until the exact board/controller is
+        confirmed and a real platform adapter is implemented.
+
+endchoice
+
+endmenu

@@ -1,0 +1,10 @@
+.DS_Store
+.vscode/
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+*.elf
+*.bin
+*.map
+compile_commands.json

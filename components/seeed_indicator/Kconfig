@@ -1,0 +1,12 @@
+menu "Seeed Indicator Bus Options"
+
+    config I2C_BUS_DYNAMIC_CONFIG
+        bool "Enable dynamic I2C configuration"
+        default y
+
+    config I2C_MS_TO_WAIT
+        int "I2C mutex block time (ms)"
+        default 200
+        range 50 5000
+
+endmenu

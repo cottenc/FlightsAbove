@@ -1,0 +1,4 @@
+dependencies:
+  idf: ">=5.1.0"
+  lvgl/lvgl:
+    version: "^8.3.11"
