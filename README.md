@@ -105,8 +105,11 @@ Arduino, `arduino-esp32`, or Arduino compatibility components.
 
 ## Marker Attribution
 
-Aircraft marker families in the radar display are compact LVGL line templates
-adapted from tar1090's GPLv2-or-later marker set:
+Aircraft marker sprites in `main/aircraft_icons.cpp` are cropped and repacked
+from tar1090's `html/images/sprites.png` asset for LVGL:
+https://github.com/wiedehopf/tar1090/blob/master/html/images/sprites.png
+
+tar1090 is licensed under GPLv2-or-later:
 https://github.com/wiedehopf/tar1090
 
 ## Static Basemap

@@ -1,4 +1,5 @@
 #include "aircraft_store.h"
+#include "aircraft_icons.h"
 #include "basemap_default.h"
 #include "device_network.h"
 #include "flights_config.h"
@@ -48,7 +49,9 @@ using adsb::SbsParser;
 namespace {
 
 constexpr size_t kVisibleAircraft = 16;
-constexpr size_t kPlaneIconPointCapacity = 18;
+constexpr int kTar1090IconCellPx = 86;
+constexpr uint16_t kPlaneIconZoom = 116;
+constexpr uint16_t kPlaneIconShadowZoom = 132;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
@@ -107,7 +110,6 @@ lv_obj_t* g_planeShadows[kVisibleAircraft] = {};
 lv_obj_t* g_planeMarkers[kVisibleAircraft] = {};
 lv_obj_t* g_trackLines[kVisibleAircraft] = {};
 lv_point_t g_trackPoints[kVisibleAircraft][Aircraft::kTraceLength] = {};
-lv_point_t g_planeIconPoints[kVisibleAircraft][kPlaneIconPointCapacity] = {};
 Aircraft g_visibleAircraft[kVisibleAircraft] = {};
 Aircraft g_routeVisibleAircraft[kVisibleAircraft] = {};
 AircraftUpdate g_httpUpdates[kHttpAircraftCapacity] = {};
@@ -502,6 +504,7 @@ lv_point_t radar_point(double distanceNm, int bearingDeg, double rangeNm) {
 }
 
 enum class AircraftIcon {
+    Unknown,
     Airliner,
     Heavy,
     Jet,
@@ -513,6 +516,9 @@ enum class AircraftIcon {
 AircraftIcon icon_for_aircraft(const Aircraft& aircraft) {
     const std::string& type = aircraft.typeCode;
     const std::string& desc = aircraft.typeDescription;
+    if (!aircraft.hasType && aircraft.category.empty() && type.empty() && desc.empty()) {
+        return AircraftIcon::Unknown;
+    }
     if (aircraft.category == "A7" || type.rfind("H", 0) == 0 || type.rfind("EC", 0) == 0 ||
         desc.find("HELICOPTER") != std::string::npos) {
         return AircraftIcon::Helicopter;
@@ -534,87 +540,35 @@ AircraftIcon icon_for_aircraft(const Aircraft& aircraft) {
     return AircraftIcon::Airliner;
 }
 
-const lv_point_t* icon_template(AircraftIcon icon, size_t& count) {
-    // Compact LVGL line templates adapted from tar1090 marker families.
-    static constexpr lv_point_t kAirliner[] = {
-        {0, -13}, {-2, -5}, {-14, 2}, {-14, 4}, {-3, 2}, {-2, 9},
-        {-8, 13}, {-8, 15}, {0, 12}, {8, 15}, {8, 13}, {2, 9},
-        {3, 2}, {14, 4}, {14, 2}, {2, -5},
-    };
-    static constexpr lv_point_t kHeavy[] = {
-        {0, -15}, {-3, -5}, {-16, 4}, {-15, 7}, {-4, 4}, {-3, 10},
-        {-11, 15}, {-10, 17}, {0, 13}, {10, 17}, {11, 15}, {3, 10},
-        {4, 4}, {15, 7}, {16, 4}, {3, -5},
-    };
-    static constexpr lv_point_t kJet[] = {
-        {0, -14}, {-3, -3}, {-14, 5}, {-5, 5}, {-4, 10}, {-8, 15},
-        {-2, 13}, {0, 10}, {2, 13}, {8, 15}, {4, 10}, {5, 5},
-        {14, 5}, {3, -3}, {0, -14},
-    };
-    static constexpr lv_point_t kSmall[] = {
-        {0, -12}, {-2, -2}, {-13, 1}, {-13, 4}, {-3, 4}, {-2, 10},
-        {-6, 13}, {0, 11}, {6, 13}, {2, 10}, {3, 4}, {13, 4},
-        {13, 1}, {2, -2}, {0, -12},
-    };
-    static constexpr lv_point_t kGlider[] = {
-        {0, -11}, {-1, -2}, {-18, 0}, {-18, 2}, {-1, 3}, {-1, 11},
-        {-6, 14}, {0, 12}, {6, 14}, {1, 11}, {1, 3}, {18, 2},
-        {18, 0}, {1, -2}, {0, -11},
-    };
-    static constexpr lv_point_t kHelicopter[] = {
-        {-15, -3}, {15, 3}, {3, 3}, {3, 12}, {-3, 12}, {-3, 3},
-        {-15, 3}, {15, -3}, {5, -3}, {3, -10}, {-3, -10}, {-5, -3},
-        {-15, -3},
-    };
-
+const lv_img_dsc_t* icon_descriptor(AircraftIcon icon) {
     switch (icon) {
     case AircraftIcon::Heavy:
-        count = sizeof(kHeavy) / sizeof(kHeavy[0]);
-        return kHeavy;
+        return &flightsabove_icon_heavy_2e;
     case AircraftIcon::Jet:
-        count = sizeof(kJet) / sizeof(kJet[0]);
-        return kJet;
+        return &flightsabove_icon_jet_swept;
     case AircraftIcon::Small:
-        count = sizeof(kSmall) / sizeof(kSmall[0]);
-        return kSmall;
+        return &flightsabove_icon_cessna;
     case AircraftIcon::Glider:
-        count = sizeof(kGlider) / sizeof(kGlider[0]);
-        return kGlider;
+        return &flightsabove_icon_glider;
     case AircraftIcon::Helicopter:
-        count = sizeof(kHelicopter) / sizeof(kHelicopter[0]);
-        return kHelicopter;
+        return &flightsabove_icon_helicopter;
+    case AircraftIcon::Unknown:
+        return &flightsabove_icon_unknown;
     case AircraftIcon::Airliner:
     default:
-        count = sizeof(kAirliner) / sizeof(kAirliner[0]);
-        return kAirliner;
+        return &flightsabove_icon_airliner;
     }
 }
 
-size_t plane_icon_points(const Aircraft& aircraft, const lv_point_t& center, int headingDeg,
-                         lv_point_t* points, size_t capacity) {
-    size_t templateCount = 0;
-    const lv_point_t* shape = icon_template(icon_for_aircraft(aircraft), templateCount);
-    constexpr double kDegToRad = 0.017453292519943295;
-    const double angle = headingDeg * kDegToRad;
-    const double sinA = std::sin(angle);
-    const double cosA = std::cos(angle);
-    if (points == nullptr || capacity == 0) {
-        return 0;
-    }
-
-    const size_t shapeCount = std::min(capacity, templateCount);
-    for (size_t i = 0; i < shapeCount; ++i) {
-        const double x = shape[i].x;
-        const double y = shape[i].y;
-        points[i].x = static_cast<lv_coord_t>(center.x + x * cosA - y * sinA);
-        points[i].y = static_cast<lv_coord_t>(center.y + x * sinA + y * cosA);
-    }
-    if (shapeCount == templateCount && shapeCount < capacity &&
-        (shape[0].x != shape[templateCount - 1].x || shape[0].y != shape[templateCount - 1].y)) {
-        points[shapeCount] = points[0];
-        return shapeCount + 1;
-    }
-    return shapeCount;
+void position_plane_icon(lv_obj_t* image, const lv_point_t& center, int headingDeg,
+                         const lv_img_dsc_t* descriptor, uint16_t zoom) {
+    lv_img_set_src(image, descriptor);
+    lv_img_set_pivot(image, kTar1090IconCellPx / 2, kTar1090IconCellPx / 2);
+    lv_img_set_angle(image, static_cast<int16_t>((headingDeg % 360) * 10));
+    lv_img_set_zoom(image, zoom);
+    lv_obj_set_pos(image,
+                   center.x - kTar1090IconCellPx / 2,
+                   center.y - kTar1090IconCellPx / 2);
 }
 
 void build_ui() {
@@ -711,20 +665,22 @@ void build_ui() {
         lv_obj_set_style_line_opa(g_trackLines[i], LV_OPA_70, 0);
         lv_obj_add_flag(g_trackLines[i], LV_OBJ_FLAG_HIDDEN);
 
-        g_planeShadows[i] = lv_line_create(g_radar);
-        lv_obj_set_size(g_planeShadows[i], kRadarWidth, kRadarHeight);
-        lv_obj_set_style_line_width(g_planeShadows[i], 6, 0);
-        lv_obj_set_style_line_color(g_planeShadows[i], lv_color_hex(0x03100D), 0);
-        lv_obj_set_style_line_opa(g_planeShadows[i], LV_OPA_80, 0);
-        lv_obj_set_style_line_rounded(g_planeShadows[i], true, 0);
+        g_planeShadows[i] = lv_img_create(g_radar);
+        lv_img_set_src(g_planeShadows[i], &flightsabove_icon_unknown);
+        lv_img_set_pivot(g_planeShadows[i], kTar1090IconCellPx / 2, kTar1090IconCellPx / 2);
+        lv_img_set_zoom(g_planeShadows[i], kPlaneIconShadowZoom);
+        lv_obj_set_style_img_recolor(g_planeShadows[i], lv_color_hex(0x03100D), 0);
+        lv_obj_set_style_img_recolor_opa(g_planeShadows[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_img_opa(g_planeShadows[i], LV_OPA_90, 0);
         lv_obj_add_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
 
-        g_planeMarkers[i] = lv_line_create(g_radar);
-        lv_obj_set_size(g_planeMarkers[i], kRadarWidth, kRadarHeight);
-        lv_obj_set_style_line_width(g_planeMarkers[i], 3, 0);
-        lv_obj_set_style_line_color(g_planeMarkers[i], lv_color_hex(cfg::kColorCyan), 0);
-        lv_obj_set_style_line_opa(g_planeMarkers[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_line_rounded(g_planeMarkers[i], true, 0);
+        g_planeMarkers[i] = lv_img_create(g_radar);
+        lv_img_set_src(g_planeMarkers[i], &flightsabove_icon_unknown);
+        lv_img_set_pivot(g_planeMarkers[i], kTar1090IconCellPx / 2, kTar1090IconCellPx / 2);
+        lv_img_set_zoom(g_planeMarkers[i], kPlaneIconZoom);
+        lv_obj_set_style_img_recolor(g_planeMarkers[i], lv_color_hex(cfg::kColorCyan), 0);
+        lv_obj_set_style_img_recolor_opa(g_planeMarkers[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_img_opa(g_planeMarkers[i], LV_OPA_COVER, 0);
         lv_obj_add_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
     }
 
@@ -859,14 +815,12 @@ void refresh_ui(lv_timer_t*) {
 
         const Aircraft& item = g_visibleAircraft[i];
         const lv_point_t point = radar_point(item.distanceNm, item.bearingDeg, rangeNm);
-        const size_t pointCount = plane_icon_points(item, point,
-                                                    item.hasTrack ? item.trackDeg : item.bearingDeg,
-                                                    g_planeIconPoints[i],
-                                                    sizeof(g_planeIconPoints[i]) / sizeof(g_planeIconPoints[i][0]));
-        lv_line_set_points(g_planeShadows[i], g_planeIconPoints[i], pointCount);
+        const int heading = item.hasTrack ? item.trackDeg : item.bearingDeg;
+        const lv_img_dsc_t* descriptor = icon_descriptor(icon_for_aircraft(item));
+        position_plane_icon(g_planeShadows[i], point, heading, descriptor, kPlaneIconShadowZoom);
         lv_obj_clear_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
-        lv_line_set_points(g_planeMarkers[i], g_planeIconPoints[i], pointCount);
-        lv_obj_set_style_line_color(g_planeMarkers[i], lv_color_hex(color_for_aircraft(item)), 0);
+        position_plane_icon(g_planeMarkers[i], point, heading, descriptor, kPlaneIconZoom);
+        lv_obj_set_style_img_recolor(g_planeMarkers[i], lv_color_hex(color_for_aircraft(item)), 0);
         lv_obj_clear_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
 
         size_t traceCount = 0;

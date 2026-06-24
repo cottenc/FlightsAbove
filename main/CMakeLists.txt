@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "basemap_default.cpp"
+        "aircraft_icons.cpp"
         "main.cpp"
     INCLUDE_DIRS
         "."
