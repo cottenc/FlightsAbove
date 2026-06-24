@@ -104,6 +104,7 @@ lv_obj_t* g_nearestLogoFrame = nullptr;
 lv_obj_t* g_nearestLogo = nullptr;
 lv_obj_t* g_rangeLabel = nullptr;
 lv_obj_t* g_outerRangeLabel = nullptr;
+lv_obj_t* g_outerRangeShadow = nullptr;
 lv_obj_t* g_radar = nullptr;
 lv_obj_t* g_basemap = nullptr;
 double g_basemapSourceRangeMiles = kLongBasemapRangeMiles;
@@ -506,6 +507,7 @@ void format_miles(char* buffer, size_t bufferSize, double miles) {
 void update_outer_range_label(double rangeMiles) {
     char buffer[8];
     format_miles(buffer, sizeof(buffer), rangeMiles);
+    lv_label_set_text(g_outerRangeShadow, buffer);
     lv_label_set_text(g_outerRangeLabel, buffer);
 }
 
@@ -764,13 +766,6 @@ void build_ui() {
         lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
     }
 
-    g_outerRangeLabel = make_label(g_radar, &lv_font_montserrat_20, cfg::kColorCyan);
-    lv_obj_set_width(g_outerRangeLabel, 56);
-    lv_obj_set_style_text_align(g_outerRangeLabel, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(g_outerRangeLabel, LV_LABEL_LONG_CLIP);
-    lv_label_set_text(g_outerRangeLabel, "--");
-    lv_obj_set_pos(g_outerRangeLabel, kRadarWidth / 2 - 28, kRadarHeight / 2 - kRadarRadius + 4);
-
     lv_obj_t* crossH = lv_obj_create(g_radar);
     lv_obj_set_size(crossH, kRadarWidth - 28, 1);
     lv_obj_align(crossH, LV_ALIGN_CENTER, 0, 0);
@@ -821,6 +816,21 @@ void build_ui() {
     for (size_t i = 0; i < kVisibleAircraft; ++i) {
         lv_obj_move_foreground(g_planeMarkers[i]);
     }
+
+    const int rangeLabelX = kRadarWidth / 2 + 10;
+    const int rangeLabelY = kRadarHeight / 2 - kRadarRadius + 2;
+    g_outerRangeShadow = make_label(g_radar, &lv_font_montserrat_20, 0x020403);
+    lv_obj_set_size(g_outerRangeShadow, 44, 24);
+    lv_obj_set_style_text_align(g_outerRangeShadow, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(g_outerRangeShadow, LV_LABEL_LONG_CLIP);
+    lv_label_set_text(g_outerRangeShadow, "--");
+    lv_obj_set_pos(g_outerRangeShadow, rangeLabelX + 1, rangeLabelY + 1);
+    g_outerRangeLabel = make_label(g_radar, &lv_font_montserrat_20, cfg::kColorCyan);
+    lv_obj_set_size(g_outerRangeLabel, 44, 24);
+    lv_obj_set_style_text_align(g_outerRangeLabel, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(g_outerRangeLabel, LV_LABEL_LONG_CLIP);
+    lv_label_set_text(g_outerRangeLabel, "--");
+    lv_obj_set_pos(g_outerRangeLabel, rangeLabelX, rangeLabelY);
 
     lv_obj_t* nearest = lv_obj_create(scr);
     lv_obj_set_size(nearest, 432, 64);
