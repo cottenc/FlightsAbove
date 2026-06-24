@@ -51,7 +51,7 @@ namespace {
 constexpr size_t kVisibleAircraft = 16;
 constexpr int kAircraftIconCellPx = 86;
 constexpr uint16_t kPlaneIconZoom = 116;
-constexpr uint16_t kPlaneIconShadowZoom = 132;
+constexpr uint16_t kPlaneIconStrokeZoom = 122;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
 constexpr int kRadarRadius = 146;
@@ -706,10 +706,10 @@ void build_ui() {
         g_planeShadows[i] = lv_img_create(g_radar);
         lv_img_set_src(g_planeShadows[i], &flightsabove_icon_unknown);
         lv_img_set_pivot(g_planeShadows[i], kAircraftIconCellPx / 2, kAircraftIconCellPx / 2);
-        lv_img_set_zoom(g_planeShadows[i], kPlaneIconShadowZoom);
-        lv_obj_set_style_img_recolor(g_planeShadows[i], lv_color_hex(0x03100D), 0);
+        lv_img_set_zoom(g_planeShadows[i], kPlaneIconStrokeZoom);
+        lv_obj_set_style_img_recolor(g_planeShadows[i], lv_color_hex(0x020403), 0);
         lv_obj_set_style_img_recolor_opa(g_planeShadows[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_img_opa(g_planeShadows[i], LV_OPA_90, 0);
+        lv_obj_set_style_img_opa(g_planeShadows[i], LV_OPA_COVER, 0);
         lv_obj_add_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
 
         g_planeMarkers[i] = lv_img_create(g_radar);
@@ -855,7 +855,8 @@ void refresh_ui(lv_timer_t*) {
         const lv_point_t point = radar_point(item.distanceNm, item.bearingDeg, rangeNm);
         const int heading = item.hasTrack ? item.trackDeg : item.bearingDeg;
         const lv_img_dsc_t* descriptor = icon_descriptor_for_aircraft(item);
-        lv_obj_add_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
+        position_plane_icon(g_planeShadows[i], point, heading, descriptor, kPlaneIconStrokeZoom);
+        lv_obj_clear_flag(g_planeShadows[i], LV_OBJ_FLAG_HIDDEN);
         position_plane_icon(g_planeMarkers[i], point, heading, descriptor, kPlaneIconZoom);
         lv_obj_set_style_img_recolor(g_planeMarkers[i], lv_color_hex(color_for_aircraft(item)), 0);
         lv_obj_clear_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
