@@ -721,6 +721,9 @@ void build_ui() {
         lv_obj_set_style_img_opa(g_planeMarkers[i], LV_OPA_COVER, 0);
         lv_obj_add_flag(g_planeMarkers[i], LV_OBJ_FLAG_HIDDEN);
     }
+    for (size_t i = 0; i < kVisibleAircraft; ++i) {
+        lv_obj_move_foreground(g_planeMarkers[i]);
+    }
 
     lv_obj_t* nearest = lv_obj_create(scr);
     lv_obj_set_size(nearest, 432, 64);
