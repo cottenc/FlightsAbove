@@ -126,17 +126,36 @@ void AircraftStore::purgeStale(int64_t nowMs) {
 }
 
 size_t AircraftStore::snapshot(Aircraft* output, size_t capacity, int64_t nowMs) const {
-    size_t count = 0;
+    if (output == nullptr || capacity == 0) {
+        return 0;
+    }
+
+    std::array<const Aircraft*, kMaxAircraft> active = {};
+    size_t activeCount = 0;
     for (const Aircraft& item : aircraft_) {
-        if (count >= capacity) {
-            break;
-        }
         if (!item.icao.empty() && nowMs - item.lastSeenMs <= staleMs_) {
-            output[count++] = item;
+            active[activeCount++] = &item;
         }
     }
 
-    sortByDistance(output, count);
+    std::sort(active.begin(), active.begin() + activeCount,
+              [](const Aircraft* left, const Aircraft* right) {
+                  const double leftDistance = (left->hasDistance || left->hasPosition)
+                      ? left->distanceNm
+                      : 99999.0;
+                  const double rightDistance = (right->hasDistance || right->hasPosition)
+                      ? right->distanceNm
+                      : 99999.0;
+                  if (leftDistance != rightDistance) {
+                      return leftDistance < rightDistance;
+                  }
+                  return left->lastSeenMs > right->lastSeenMs;
+              });
+
+    const size_t count = std::min(capacity, activeCount);
+    for (size_t i = 0; i < count; ++i) {
+        output[i] = *active[i];
+    }
     return count;
 }
 
@@ -144,6 +163,20 @@ size_t AircraftStore::activeCount(int64_t nowMs) const {
     size_t count = 0;
     for (const Aircraft& item : aircraft_) {
         if (!item.icao.empty() && nowMs - item.lastSeenMs <= staleMs_) {
+            count++;
+        }
+    }
+    return count;
+}
+
+size_t AircraftStore::rangeCount(double rangeNm, int64_t nowMs) const {
+    size_t count = 0;
+    for (const Aircraft& item : aircraft_) {
+        if (item.icao.empty() || nowMs - item.lastSeenMs > staleMs_ ||
+            !(item.hasDistance || item.hasPosition)) {
+            continue;
+        }
+        if (item.distanceNm <= rangeNm) {
             count++;
         }
     }

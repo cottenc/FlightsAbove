@@ -47,7 +47,7 @@ using adsb::SbsParser;
 
 namespace {
 
-constexpr size_t kVisibleAircraft = 8;
+constexpr size_t kVisibleAircraft = 16;
 constexpr size_t kPlaneIconPointCapacity = 16;
 constexpr int kRadarWidth = 432;
 constexpr int kRadarHeight = 318;
@@ -61,8 +61,8 @@ constexpr double kCloseBasemapMaxRangeMiles = 25.0;
 constexpr double kMidBasemapMaxRangeMiles = 50.0;
 constexpr size_t kHttpAircraftCapacity = 32;
 constexpr size_t kRouteBatchCapacity = 4;
-constexpr int kHttpTimeoutMs = 4000;
-constexpr size_t kAircraftJsonMaxBytes = 32768;
+constexpr int kHttpTimeoutMs = 10000;
+constexpr size_t kAircraftJsonMaxBytes = 131072;
 constexpr size_t kRouteJsonMaxBytes = 4096;
 constexpr size_t kLogoPngMaxBytes = 65536;
 constexpr int64_t kRouteLookupMinIntervalMs = 3500;
@@ -113,6 +113,13 @@ Aircraft g_routeVisibleAircraft[kVisibleAircraft] = {};
 AircraftUpdate g_httpUpdates[kHttpAircraftCapacity] = {};
 RouteRequest g_routeRequests[kRouteBatchCapacity] = {};
 RouteResult g_routeResults[kRouteBatchCapacity] = {};
+SemaphoreHandle_t g_httpStatsMutex = nullptr;
+size_t g_lastHttpAircraftBytes = 0;
+size_t g_lastHttpParsedAircraft = 0;
+int g_lastHttpStatus = 0;
+esp_err_t g_lastHttpError = ESP_OK;
+int64_t g_lastHttpFetchMs = 0;
+std::string g_lastHttpFeederUrl;
 
 struct ImageFetchTarget {
     std::string key;
@@ -769,7 +776,9 @@ void refresh_ui(lv_timer_t*) {
 
     size_t count = 0;
     size_t activeCount = 0;
+    size_t maxRangeCount = 0;
     const int64_t now = now_ms();
+    const uint16_t maxRangeMiles = settings.getRadarRangeMiles();
 
     if (xSemaphoreTake(g_aircraftMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
         g_aircraftStore.setReceiverLocation(settings.getReceiverLatitude(),
@@ -777,11 +786,18 @@ void refresh_ui(lv_timer_t*) {
         g_aircraftStore.purgeStale(now);
         count = g_aircraftStore.snapshot(g_visibleAircraft, kVisibleAircraft, now);
         activeCount = g_aircraftStore.activeCount(now);
+        maxRangeCount = g_aircraftStore.rangeCount(miles_to_nm(maxRangeMiles), now);
         xSemaphoreGive(g_aircraftMutex);
     }
 
     char buffer[128];
-    snprintf(buffer, sizeof(buffer), "%u aircraft", static_cast<unsigned>(activeCount));
+    if (maxRangeCount < activeCount) {
+        snprintf(buffer, sizeof(buffer), "%u/%u aircraft",
+                 static_cast<unsigned>(maxRangeCount),
+                 static_cast<unsigned>(activeCount));
+    } else {
+        snprintf(buffer, sizeof(buffer), "%u aircraft", static_cast<unsigned>(activeCount));
+    }
     lv_label_set_text(g_countLabel, buffer);
 
     device_network::Snapshot network = device_network::snapshot();
@@ -815,7 +831,6 @@ void refresh_ui(lv_timer_t*) {
         return;
     }
 
-    const uint16_t maxRangeMiles = settings.getRadarRangeMiles();
     const double rangeMiles = autoscaled_range_miles(g_visibleAircraft, count, maxRangeMiles);
     const double rangeNm = rangeMiles * kNmPerMile;
     snprintf(buffer, sizeof(buffer), "AUTO %.0f/%u MI", rangeMiles, static_cast<unsigned>(maxRangeMiles));
@@ -1005,6 +1020,18 @@ void adsb_http_task(void*) {
         int status = 0;
         const std::string feederUrl = settings.getFeederUrl();
         const esp_err_t err = http_get(feederUrl.c_str(), kAircraftJsonMaxBytes, body, &status);
+        if (g_httpStatsMutex != nullptr &&
+            xSemaphoreTake(g_httpStatsMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            g_lastHttpStatus = status;
+            g_lastHttpError = err;
+            g_lastHttpFetchMs = now_ms();
+            g_lastHttpAircraftBytes = body.size();
+            g_lastHttpFeederUrl = feederUrl;
+            if (err != ESP_OK || status != 200) {
+                g_lastHttpParsedAircraft = 0;
+            }
+            xSemaphoreGive(g_httpStatsMutex);
+        }
         if (err != ESP_OK || status != 200) {
             ESP_LOGW(TAG, "aircraft JSON fetch failed: %s status=%d url=%s",
                      esp_err_to_name(err), status, feederUrl.c_str());
@@ -1014,6 +1041,11 @@ void adsb_http_task(void*) {
 
         const size_t count = g_readsbParser.parseAircraftJson(body.c_str(), g_httpUpdates,
                                                               kHttpAircraftCapacity);
+        if (g_httpStatsMutex != nullptr &&
+            xSemaphoreTake(g_httpStatsMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            g_lastHttpParsedAircraft = count;
+            xSemaphoreGive(g_httpStatsMutex);
+        }
         if (count > 0 && xSemaphoreTake(g_aircraftMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             const int64_t now = now_ms();
             for (size_t i = 0; i < count; ++i) {
@@ -1760,6 +1792,53 @@ esp_err_t handle_debug_logo(httpd_req_t* req) {
     return httpd_resp_send(req, body.c_str(), body.size());
 }
 
+esp_err_t handle_debug_adsb(httpd_req_t* req) {
+    const int64_t now = now_ms();
+    size_t activeCount = 0;
+    size_t maxRangeCount = 0;
+    if (xSemaphoreTake(g_aircraftMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        g_aircraftStore.purgeStale(now);
+        activeCount = g_aircraftStore.activeCount(now);
+        maxRangeCount = g_aircraftStore.rangeCount(miles_to_nm(settings.getRadarRangeMiles()), now);
+        xSemaphoreGive(g_aircraftMutex);
+    }
+
+    size_t bytes = 0;
+    size_t parsed = 0;
+    int status = 0;
+    esp_err_t error = ESP_OK;
+    int64_t ageMs = -1;
+    std::string feederUrl;
+    if (g_httpStatsMutex != nullptr &&
+        xSemaphoreTake(g_httpStatsMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        bytes = g_lastHttpAircraftBytes;
+        parsed = g_lastHttpParsedAircraft;
+        status = g_lastHttpStatus;
+        error = g_lastHttpError;
+        if (g_lastHttpFetchMs > 0) {
+            ageMs = now - g_lastHttpFetchMs;
+        }
+        feederUrl = g_lastHttpFeederUrl;
+        xSemaphoreGive(g_httpStatsMutex);
+    }
+
+    std::string body = "{";
+    body += "\"feeder_url\":\"" + json_escape_text(feederUrl) + "\",";
+    body += "\"last_fetch_age_ms\":" + std::to_string(ageMs) + ",";
+    body += "\"last_http_status\":" + std::to_string(status) + ",";
+    body += "\"last_http_error\":\"" + json_escape_text(esp_err_to_name(error)) + "\",";
+    body += "\"last_response_bytes\":" + std::to_string(bytes) + ",";
+    body += "\"last_parsed_aircraft\":" + std::to_string(parsed) + ",";
+    body += "\"tracked_aircraft\":" + std::to_string(activeCount) + ",";
+    body += "\"configured_range_miles\":" + std::to_string(settings.getRadarRangeMiles()) + ",";
+    body += "\"tracked_in_configured_range\":" + std::to_string(maxRangeCount);
+    body += "}";
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_send(req, body.c_str(), body.size());
+}
+
 esp_err_t handle_debug_screenshot(httpd_req_t* req) {
     enum {
         BMP_FILE_HEADER_SIZE = 14,
@@ -1828,19 +1907,23 @@ esp_err_t handle_debug_screenshot(httpd_req_t* req) {
 void register_debug_routes() {
     xTaskCreatePinnedToCore([](void*) {
         const esp_err_t logoErr = device_network::registerGetHandler("/debug/logo", handle_debug_logo);
+        const esp_err_t adsbErr = device_network::registerGetHandler("/debug/adsb", handle_debug_adsb);
         const esp_err_t screenshotErr = device_network::registerGetHandler("/debug/screenshot.bmp", handle_debug_screenshot);
         for (;;) {
             const bool logoReady = logoErr == ESP_OK || logoErr == ESP_ERR_HTTPD_HANDLER_EXISTS;
+            const bool adsbReady = adsbErr == ESP_OK || adsbErr == ESP_ERR_HTTPD_HANDLER_EXISTS;
             const bool screenshotReady = screenshotErr == ESP_OK ||
                                          screenshotErr == ESP_ERR_HTTPD_HANDLER_EXISTS;
-            if (logoReady && screenshotReady) {
+            if (logoReady && adsbReady && screenshotReady) {
                 ESP_LOGI(TAG, "debug routes registered");
                 vTaskDelete(nullptr);
                 return;
             }
             const esp_err_t retryLogoErr = device_network::registerGetHandler("/debug/logo", handle_debug_logo);
+            const esp_err_t retryAdsbErr = device_network::registerGetHandler("/debug/adsb", handle_debug_adsb);
             const esp_err_t retryScreenshotErr = device_network::registerGetHandler("/debug/screenshot.bmp", handle_debug_screenshot);
             if ((retryLogoErr == ESP_OK || retryLogoErr == ESP_ERR_HTTPD_HANDLER_EXISTS) &&
+                (retryAdsbErr == ESP_OK || retryAdsbErr == ESP_ERR_HTTPD_HANDLER_EXISTS) &&
                 (retryScreenshotErr == ESP_OK || retryScreenshotErr == ESP_ERR_HTTPD_HANDLER_EXISTS)) {
                 ESP_LOGI(TAG, "debug routes registered");
                 vTaskDelete(nullptr);
@@ -1885,6 +1968,8 @@ extern "C" void app_main() {
     configASSERT(g_routeCacheMutex != nullptr);
     g_logoMutex = xSemaphoreCreateMutex();
     configASSERT(g_logoMutex != nullptr);
+    g_httpStatsMutex = xSemaphoreCreateMutex();
+    configASSERT(g_httpStatsMutex != nullptr);
     g_lvglMutex = xSemaphoreCreateMutex();
     configASSERT(g_lvglMutex != nullptr);
 

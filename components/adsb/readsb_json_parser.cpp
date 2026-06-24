@@ -35,6 +35,23 @@ bool read_string(const cJSON* object, const char* name, std::string& output) {
     return true;
 }
 
+double sortable_distance(const AircraftUpdate& update) {
+    return (update.hasDistance || update.hasPosition) ? update.distanceNm : 99999.0;
+}
+
+size_t farthest_index(const AircraftUpdate* output, size_t count) {
+    size_t index = 0;
+    double distance = sortable_distance(output[0]);
+    for (size_t i = 1; i < count; ++i) {
+        const double candidateDistance = sortable_distance(output[i]);
+        if (candidateDistance > distance) {
+            index = i;
+            distance = candidateDistance;
+        }
+    }
+    return index;
+}
+
 }  // namespace
 
 size_t ReadsbJsonParser::parseAircraftJson(const char* json, AircraftUpdate* output,
@@ -57,9 +74,6 @@ size_t ReadsbJsonParser::parseAircraftJson(const char* json, AircraftUpdate* out
     size_t count = 0;
     const cJSON* item = nullptr;
     cJSON_ArrayForEach(item, aircraft) {
-        if (count >= capacity) {
-            break;
-        }
         if (!cJSON_IsObject(item)) {
             continue;
         }
@@ -135,7 +149,15 @@ size_t ReadsbJsonParser::parseAircraftJson(const char* json, AircraftUpdate* out
             update.hasBearing = true;
         }
 
-        output[count++] = update;
+        if (count < capacity) {
+            output[count++] = update;
+            continue;
+        }
+
+        const size_t replace = farthest_index(output, count);
+        if (sortable_distance(update) < sortable_distance(output[replace])) {
+            output[replace] = update;
+        }
     }
 
     cJSON_Delete(root);

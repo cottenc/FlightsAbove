@@ -18,6 +18,7 @@ class AircraftStore {
     void purgeStale(int64_t nowMs);
     size_t snapshot(Aircraft* output, size_t capacity, int64_t nowMs) const;
     size_t activeCount(int64_t nowMs) const;
+    size_t rangeCount(double rangeNm, int64_t nowMs) const;
 
  private:
     std::array<Aircraft, kMaxAircraft> aircraft_{};
