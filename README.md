@@ -105,11 +105,15 @@ Arduino, `arduino-esp32`, or Arduino compatibility components.
 
 ## Marker Attribution
 
-Aircraft marker sprites in `main/aircraft_icons.cpp` are cropped and repacked
-from tar1090's `html/images/sprites.png` asset for LVGL:
+Aircraft marker sprites in `main/aircraft_icons.cpp` include exact type-code
+silhouettes derived from AircraftShapesSVG for common local aircraft, with
+family fallback sprites cropped and repacked from tar1090's
+`html/images/sprites.png` asset for LVGL:
+https://github.com/RexKramer1/AircraftShapesSVG
 https://github.com/wiedehopf/tar1090/blob/master/html/images/sprites.png
 
-tar1090 is licensed under GPLv2-or-later:
+AircraftShapesSVG is licensed under GPL-3.0. tar1090 is licensed under
+GPLv2-or-later:
 https://github.com/wiedehopf/tar1090
 
 ## Static Basemap
