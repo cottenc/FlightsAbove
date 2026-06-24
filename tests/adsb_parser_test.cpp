@@ -76,6 +76,9 @@ int main() {
     assert(request.find("\"callsign\":\"ASA328\"") != std::string::npos);
     assert(request.find("\"lat\":47.714833") != std::string::npos);
     assert(request.find("\"lng\":-122.430443") != std::string::npos);
+    requests[0].callsign = "BAD\"ID";
+    const std::string escapedRequest = adsb::buildRouteRequestJson(requests, 1);
+    assert(escapedRequest.find("\"callsign\":\"BAD\\\"ID\"") != std::string::npos);
 
     adsb::RouteCache cache;
     std::string route;

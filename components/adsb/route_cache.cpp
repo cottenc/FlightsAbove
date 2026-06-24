@@ -83,6 +83,46 @@ int RouteCache::slot(int64_t nowMs) const {
     return oldest;
 }
 
+std::string jsonEscape(const std::string& value) {
+    std::string output;
+    output.reserve(value.size());
+    for (char ch : value) {
+        switch (ch) {
+        case '"':
+            output += "\\\"";
+            break;
+        case '\\':
+            output += "\\\\";
+            break;
+        case '\b':
+            output += "\\b";
+            break;
+        case '\f':
+            output += "\\f";
+            break;
+        case '\n':
+            output += "\\n";
+            break;
+        case '\r':
+            output += "\\r";
+            break;
+        case '\t':
+            output += "\\t";
+            break;
+        default:
+            if (static_cast<unsigned char>(ch) < 0x20) {
+                char escaped[7];
+                snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned char>(ch));
+                output += escaped;
+            } else {
+                output.push_back(ch);
+            }
+            break;
+        }
+    }
+    return output;
+}
+
 std::string buildRouteRequestJson(const RouteRequest* requests, size_t count) {
     std::string json = "{\"planes\":[";
     for (size_t i = 0; i < count; ++i) {
@@ -94,7 +134,7 @@ std::string buildRouteRequestJson(const RouteRequest* requests, size_t count) {
         snprintf(lat, sizeof(lat), "%.6f", requests[i].latitude);
         snprintf(lon, sizeof(lon), "%.6f", requests[i].longitude);
         json += "{\"callsign\":\"";
-        json += requests[i].callsign;
+        json += jsonEscape(requests[i].callsign);
         json += "\",\"lat\":";
         json += lat;
         json += ",\"lng\":";

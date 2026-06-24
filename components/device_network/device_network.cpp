@@ -19,6 +19,7 @@
 #include "freertos/task.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -213,6 +214,40 @@ void trim(std::string& value) {
     value.erase(std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
 }
 
+bool parse_double_field(const std::string& input, double& output) {
+    std::string value = input;
+    trim(value);
+    if (value.empty()) {
+        return false;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    const double parsed = std::strtod(value.c_str(), &end);
+    if (errno != 0 || end == value.c_str() || *end != '\0') {
+        return false;
+    }
+    output = parsed;
+    return true;
+}
+
+bool parse_uint16_field(const std::string& input, uint16_t& output) {
+    std::string value = input;
+    trim(value);
+    if (value.empty() || value[0] == '-') {
+        return false;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
+    if (errno != 0 || end == value.c_str() || *end != '\0' || parsed > UINT16_MAX) {
+        return false;
+    }
+    output = static_cast<uint16_t>(parsed);
+    return true;
+}
+
 void connect_station_from_settings() {
     std::string ssid;
     std::string pass;
@@ -328,20 +363,33 @@ esp_err_t handle_save_wifi(httpd_req_t* req) {
 
 esp_err_t handle_save_receiver(httpd_req_t* req) {
     const std::string body = read_body(req, 1024);
-    const double lat = std::strtod(form_value(body, "lat").c_str(), nullptr);
-    const double lon = std::strtod(form_value(body, "lon").c_str(), nullptr);
-    const int sleep = std::atoi(form_value(body, "sleep").c_str());
-    const int range = std::atoi(form_value(body, "range").c_str());
+    double lat = 0.0;
+    double lon = 0.0;
+    uint16_t sleep = 0;
+    uint16_t range = 0;
+    if (!parse_double_field(form_value(body, "lat"), lat) ||
+        !parse_double_field(form_value(body, "lon"), lon)) {
+        return send_text(req, 400, "text/plain", "Receiver latitude and longitude must be valid numbers.");
+    }
+    if (!parse_uint16_field(form_value(body, "sleep"), sleep)) {
+        return send_text(req, 400, "text/plain", "Display sleep minutes must be a valid number.");
+    }
+    if (!parse_uint16_field(form_value(body, "range"), range)) {
+        return send_text(req, 400, "text/plain", "Radar range must be a valid number.");
+    }
     if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
         return send_text(req, 400, "text/plain", "Receiver latitude or longitude is out of range.");
+    }
+    if (sleep > 120) {
+        return send_text(req, 400, "text/plain", "Display sleep minutes must be between 0 and 120.");
     }
     if (range < cfg::kMinRadarRangeMiles || range > cfg::kMaxRadarRangeMiles) {
         return send_text(req, 400, "text/plain", "Radar range is out of range.");
     }
 
     settings.setReceiverLocation(lat, lon);
-    settings.setDisplaySleepMin(static_cast<uint16_t>(sleep < 0 ? 0 : sleep));
-    settings.setRadarRangeMiles(static_cast<uint16_t>(range));
+    settings.setDisplaySleepMin(sleep);
+    settings.setRadarRangeMiles(range);
     return redirect_root(req);
 }
 
@@ -351,6 +399,9 @@ esp_err_t handle_save_feeder(httpd_req_t* req) {
     trim(url);
     if (url.rfind("http://", 0) != 0) {
         return send_text(req, 400, "text/plain", "Feeder URL must start with http://.");
+    }
+    if (url.size() > 512) {
+        return send_text(req, 400, "text/plain", "Feeder URL is too long.");
     }
     settings.setFeederUrl(url);
     return redirect_root(req);

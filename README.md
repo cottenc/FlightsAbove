@@ -1,129 +1,118 @@
 # FlightsAbove
 
-ESP-IDF 6 firmware that displays nearby aircraft from decoded ADS-B messages.
+ESP-IDF 6 firmware for a SenseCAP Indicator D1Pro that displays nearby aircraft
+from a local ADS-B feeder.
 
-FlightsAbove reads SBS/BaseStation-style ADS-B text over an ESP32 UART, tracks
-the most recent aircraft state, and renders nearby traffic on the SenseCAP
-Indicator D1Pro 480x480 touchscreen.
-
-This project reuses the proven native ESP-IDF display/platform structure from
-[`cottenc/espresso`](https://github.com/cottenc/espresso), including the
-SenseCAP board support component, LVGL framebuffer setup, layout profiles, and
-LCD timing defaults.
+FlightsAbove is HTTP-first: it polls a readsb/tar1090-compatible
+`aircraft.json` endpoint, computes distance and bearing from the configured map
+center, and renders a small radar view with a static basemap. UART
+SBS/BaseStation ingest remains available as a fallback.
 
 ## Hardware
 
 - SenseCAP Indicator D1Pro or compatible ESP32-S3 display target
-- ADS-B receiver/decoder that outputs SBS/BaseStation lines over serial
+- Local ADS-B feeder exposing readsb/tar1090 JSON, for example:
 
-The ESP32 does not directly demodulate 1090 MHz RF. Use a decoder such as a
-dump1090 bridge, Stratux-style receiver, or another ADS-B front end that emits
-decoded messages.
+```text
+http://adsb-feeder.local:8080/data/aircraft.json
+```
 
-## Default Wiring
-
-| Signal | ESP32 pin |
-| --- | --- |
-| ADS-B decoder TX | GPIO 17 |
-| ADS-B decoder GND | GND |
-
-Only the ESP32 RX pin is required if the ADS-B decoder is transmit-only.
-Change the UART pins in `components/app_config/include/flights_config.h` if
-your hardware uses a different connector.
-
-## Configure
-
-Compile-time defaults live in `components/app_config/include/flights_config.h`:
-
-- `kAdsbRxPin`, `kAdsbTxPin`, and `kAdsbBaudRate`
-- setup AP name and hostname
-- stale-aircraft timeout and UI refresh timing
-
-Receiver location and Wi-Fi credentials can be configured from the device setup
-portal and are stored in NVS.
+Optional UART fallback expects SBS/BaseStation `MSG` lines on GPIO 17 at
+9600 baud.
 
 ## Setup Portal
 
 FlightsAbove starts a setup access point named `FlightsAbove-Setup` on boot.
-Join that network and open the setup URL shown at the bottom of the device
-display, usually:
+Join that network and open the setup URL shown at the bottom of the device,
+usually:
 
 ```text
 http://192.168.4.1/
 ```
 
-The portal provides:
+The setup portal configures:
 
-- Wi-Fi credential setup
-- receiver latitude/longitude
-- Logostream API key entry for airline logos
-- display sleep preference
-- status JSON
-- restart and factory reset actions
-- OTA app firmware upload
+- Wi-Fi credentials
+- feeder `aircraft.json` URL
+- map center latitude and longitude
+- maximum radar range
+- Logostream API key for airline logos/liveries
+- display sleep timeout
+- OTA firmware upload
+- restart and factory reset
 
-For OTA updates, build the project and upload `build/flightsabove.bin` from the
-portal. The device writes the app to the inactive OTA partition and reboots
-after a successful upload.
+Settings are stored in the device NVS partition. The Logostream API key is not
+stored in source files, is not returned in status JSON, and is not logged.
 
-## Airline Logos
+## Security Notes
 
-FlightsAbove can show a Logostream airline logo for the nearest aircraft when a
-callsign starts with a three-letter airline ICAO code, such as `ASA328`. Enter
-the Logostream API key in the setup portal. The key is stored only in the
-device's NVS settings, is never written to source files, is not returned by the
-status JSON, and is not logged. Common local secret file patterns are ignored in
-`.gitignore`.
+The setup portal is intentionally simple and local-network oriented. It does not
+implement authentication. Anyone who can reach the setup AP or the device on the
+LAN can change settings, upload firmware, restart the device, factory reset it,
+and read debug status endpoints. Use it only on a trusted local network.
 
-Airline logo PNGs are cached on the device in the SPIFFS data partition. The
-firmware prefers cached airline logos before calling Logostream, stores newly
-fetched airline logos, and slowly prefetches the most common local airline
-logos to protect the API quota. Aircraft-specific liveries remain best-effort
-and are not persisted.
+Debug endpoints are available for development and field diagnosis:
 
-## Supported Input
+- `/status`
+- `/debug/adsb`
+- `/debug/logo`
+- `/debug/screenshot.bmp`
 
-The initial parser supports SBS/BaseStation `MSG` records, for example:
+These endpoints do not expose the Logostream API key.
 
-```text
-MSG,3,1,1,A8B32F,1,2026/06/23,12:00:01.000,2026/06/23,12:00:01.000,,36000,420,273,37.62131,-122.37896,,,0,0,0,0
-MSG,1,1,1,A8B32F,1,2026/06/23,12:00:02.000,2026/06/23,12:00:02.000,UAL123,,,,,,,,,,0
-```
+## Build, Test, And Flash
 
-## Build And Upload
-
-Install ESP-IDF 6.0 or newer, export the environment, then run:
+Install ESP-IDF 6.0 or newer, then:
 
 ```sh
 . ~/esp/esp-idf/export.sh
 idf.py build
-idf.py -p /dev/cu.usbserial-* flash monitor
+idf.py -p /dev/cu.usbserial-21110 flash monitor
 ```
 
-The firmware is intentionally kept as a clean ESP-IDF project. It does not use
-Arduino, `arduino-esp32`, or Arduino compatibility components.
+Run the host parser/cache regression test:
 
-## Marker Attribution
+```sh
+cc -std=c99 \
+  -Imanaged_components/espressif__cjson/cJSON \
+  -c managed_components/espressif__cjson/cJSON/cJSON.c \
+  -o /tmp/flightsabove-cjson.o
+g++ -std=c++17 \
+  -Icomponents/adsb/include \
+  -Imanaged_components/espressif__cjson/cJSON \
+  tests/adsb_parser_test.cpp \
+  components/adsb/aircraft.cpp \
+  components/adsb/aircraft_store.cpp \
+  components/adsb/readsb_json_parser.cpp \
+  components/adsb/route_cache.cpp \
+  /tmp/flightsabove-cjson.o \
+  -o /tmp/flightsabove-adsb-parser-test
+/tmp/flightsabove-adsb-parser-test
+```
 
-Aircraft marker sprites in `main/aircraft_icons.cpp` include exact type-code
-silhouettes derived from AircraftShapesSVG for common local aircraft, with
-family fallback sprites cropped and repacked from tar1090's
-`html/images/sprites.png` asset for LVGL:
-https://github.com/RexKramer1/AircraftShapesSVG
-https://github.com/wiedehopf/tar1090/blob/master/html/images/sprites.png
+The host test uses the managed cJSON component. Run `idf.py build` once first
+on a fresh clone so ESP-IDF downloads managed components.
 
-AircraftShapesSVG is licensed under GPL-3.0. tar1090 is licensed under
-GPLv2-or-later:
-https://github.com/wiedehopf/tar1090
+The firmware is a native ESP-IDF project. It does not use Arduino,
+`arduino-esp32`, or Arduino compatibility components.
 
-## Static Basemap
+## Runtime Behavior
 
-The radar basemap is generated as four flash-resident LVGL RGB565 images in
-`main/basemap_default.cpp`: 10-mile local, 25-mile close-range, 50-mile
-mid-range, and 150-mile long-range maps. Runtime autoscale uses the closest
-matching source to avoid heavily zooming a wider map. All maps are aligned to
-the default map center `47.68571, -122.31595`. Regenerate them after changing
-those defaults:
+- Default map center: `47.68571, -122.31595`
+- Default maximum radar range: `10` miles
+- Autoscale chooses the smallest useful range up to the configured maximum
+- Static basemaps are embedded for 10, 25, 50, and 150 mile source ranges
+- Tracked aircraft are purged after 120 seconds without updates
+- Up to 32 aircraft are retained internally; up to 16 are rendered
+- Route lookups use `http://adsb.im/api/0/routeset`
+- Airline logo/livery lookups use Logostream when an API key is configured
+- Common airline logos are cached in SPIFFS to reduce API calls
+
+## Regenerating The Basemap
+
+The basemap is generated as flash-resident LVGL RGB565 images in
+`main/basemap_default.cpp`. Regenerate after changing the default map center or
+source map ranges:
 
 ```sh
 python3 -m venv .venv-basemap
@@ -132,27 +121,40 @@ python -m pip install Pillow
 python tools/generate_basemap.py
 ```
 
-The generator writes visual check images to `docs/basemap_local_preview.png`,
-`docs/basemap_close_preview.png`, `docs/basemap_mid_preview.png`, and
-`docs/basemap_default_preview.png`. Map tiles are from OpenStreetMap
-contributors.
+Preview images are written to:
+
+- `docs/basemap_local_preview.png`
+- `docs/basemap_close_preview.png`
+- `docs/basemap_mid_preview.png`
+- `docs/basemap_default_preview.png`
+
+Map tiles are from OpenStreetMap contributors.
 
 ## Project Layout
 
 ```text
-components/adsb/             Aircraft state, SBS parser, fixed-size tracker
-components/app_config/       Shared device defaults and pins
-components/device_network/   Wi-Fi setup AP, setup portal server, OTA upload
-components/platform/         Reused display platform adapter from espresso
-components/seeed_indicator/  Reused SenseCAP board support from espresso
-components/setup_portal/     Generic FlightsAbove setup HTML
-components/storage/          NVS-backed Wi-Fi and receiver settings
-components/ui_layout/        Reused layout profile structure
-main/main.cpp                UART ingest task and LVGL UI
+components/adsb/             Aircraft state, parsers, route cache
+components/app_config/       Device defaults, pins, colors, ranges
+components/device_network/   Wi-Fi AP/STA setup, portal, status, OTA
+components/platform/         Display platform adapter
+components/seeed_indicator/  SenseCAP board support
+components/setup_portal/     Setup HTML rendering
+components/storage/          NVS-backed settings
+components/ui_layout/        Display profile structure
+main/main.cpp                Tasks, HTTP ingest, logo cache, LVGL UI
+main/aircraft_icons.cpp      LVGL aircraft marker assets
+main/basemap_default.cpp     LVGL basemap assets
 ```
 
-## Roadmap
+## Marker Attribution
 
-- Add optional Wi-Fi ingest from a local dump1090 endpoint
-- Add directional radar plotting when aircraft bearing is available
-- Support additional decoded formats such as Beast-to-text bridge output
+Aircraft marker sprites in `main/aircraft_icons.cpp` include exact type-code
+silhouettes derived from AircraftShapesSVG for common local aircraft, with
+family fallback sprites cropped and repacked from tar1090's
+`html/images/sprites.png` asset for LVGL:
+
+- https://github.com/RexKramer1/AircraftShapesSVG
+- https://github.com/wiedehopf/tar1090/blob/master/html/images/sprites.png
+
+AircraftShapesSVG is licensed under GPL-3.0. tar1090 is licensed under
+GPLv2-or-later.
