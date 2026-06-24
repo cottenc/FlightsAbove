@@ -555,13 +555,13 @@ void set_nearest_logo_visible(bool visible) {
         lv_obj_set_pos(g_nearestCallsign, 76, 0);
         lv_obj_set_width(g_nearestCallsign, 180);
         lv_obj_set_pos(g_nearestMeta, 76, 36);
-        lv_obj_set_width(g_nearestMeta, 292);
+        lv_obj_set_width(g_nearestMeta, 284);
     } else {
         lv_obj_add_flag(g_nearestLogoFrame, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(g_nearestCallsign, 0, 0);
         lv_obj_set_width(g_nearestCallsign, 210);
         lv_obj_set_pos(g_nearestMeta, 0, 36);
-        lv_obj_set_width(g_nearestMeta, 364);
+        lv_obj_set_width(g_nearestMeta, 336);
     }
 }
 
@@ -865,7 +865,7 @@ void build_ui() {
         lv_obj_move_foreground(g_planeMarkers[i]);
     }
 
-    const int rangeLabelX = kRadarWidth / 2 + kRadarRadius - 44;
+    const int rangeLabelX = kRadarWidth / 2 + kRadarRadius + 4;
     const int rangeLabelY = kRadarHeight / 2 - 12;
     g_outerRangeShadow = make_label(g_radar, &lv_font_montserrat_20, 0x020403);
     lv_obj_set_size(g_outerRangeShadow, 44, 24);
@@ -909,13 +909,14 @@ void build_ui() {
     lv_obj_set_pos(g_nearestCallsign, 0, 0);
 
     g_nearestType = make_label(nearest, &lv_font_montserrat_14, cfg::kColorAmber);
-    lv_obj_set_width(g_nearestType, 140);
+    lv_obj_set_width(g_nearestType, 58);
+    lv_obj_set_style_text_align(g_nearestType, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(g_nearestType, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestType, "--");
-    lv_obj_align(g_nearestType, LV_ALIGN_TOP_RIGHT, -52, 4);
+    lv_obj_set_pos(g_nearestType, 365, 42);
 
     g_nearestMeta = make_label(nearest, &lv_font_montserrat_14, cfg::kColorCyan);
-    lv_obj_set_width(g_nearestMeta, 364);
+    lv_obj_set_width(g_nearestMeta, 336);
     lv_label_set_long_mode(g_nearestMeta, LV_LABEL_LONG_DOT);
     lv_label_set_text(g_nearestMeta, "Waiting for ADS-B data");
     lv_obj_set_pos(g_nearestMeta, 0, 36);
@@ -1072,7 +1073,7 @@ void refresh_ui(lv_timer_t*) {
     lv_label_set_text(g_nearestType, type_for_aircraft(nearest).c_str());
     const lv_img_dsc_t* nearestDescriptor = icon_descriptor_for_aircraft(nearest);
     const int nearestHeading = nearest.hasTrack ? nearest.trackDeg : nearest.bearingDeg;
-    const lv_point_t nearestIconCenter = {390, 24};
+    const lv_point_t nearestIconCenter = {394, 18};
     const bool nearestExactIcon = has_exact_type_icon(nearest);
     position_plane_icon(g_nearestPlaneShadow, nearestIconCenter, nearestHeading,
                         nearestDescriptor,
