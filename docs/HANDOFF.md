@@ -7,6 +7,8 @@
 - Device IP during development: `192.168.1.78`
 - ESP-IDF path used during development: `/Users/cotten/esp/esp-idf`
 - ESP-IDF version: 6.0.x
+- Last verified OTA firmware hash: `3f4f1da`
+- Last HTTP verification date: 2026-06-24
 
 ## Required Setup
 
@@ -63,6 +65,9 @@ Before handoff:
 - Route lookup uses `http://adsb.im/api/0/routeset`.
 - Logostream calls are quota-limited locally and common airline logos are cached
   in SPIFFS; aircraft-specific liveries are best-effort and not persisted.
+- Logostream currently returns SVG for some common airline logo requests even
+  when PNG is requested. The firmware seeds compact built-in PNG fallbacks for
+  the common-airline cache keys and preserves any real cached API PNGs.
 - Static basemaps are aligned to the configured default center. Changing the map
   center at runtime re-centers aircraft math but does not regenerate map imagery.
 
