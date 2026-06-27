@@ -57,6 +57,8 @@ Debug endpoints are available for development and field diagnosis:
 - `/debug/adsb`
 - `/debug/logo`
 - `/debug/screenshot.bmp`
+- `/debug/screenshot-preview.bmp`
+- `/debug/selection`
 
 These endpoints do not expose the Logostream API key.
 
@@ -107,6 +109,11 @@ The firmware is a native ESP-IDF project. It does not use Arduino,
 - Route lookups use `http://adsb.im/api/0/routeset`
 - Airline logo/livery lookups use Logostream when an API key is configured
 - Common airline logos are cached in SPIFFS to reduce API calls
+- Tap an aircraft marker to make it the detail target
+- Tap the detail bar to cycle through visible aircraft
+- Long-press the detail bar to clear the manual target and return to nearest
+- `/debug/selection?icao=HEX` and `/debug/selection?clear=1` provide
+  operator-free validation of target selection
 
 ## Regenerating The Basemap
 
